@@ -20,8 +20,8 @@ limitations under the License.
 package v1beta2
 
 import (
-	"github.com/apache/camel-k/addons/strimzi/duck/client/internalclientset/scheme"
-	v1beta2 "github.com/apache/camel-k/addons/strimzi/duck/v1beta2"
+	"github.com/lendi-au/camel-k/addons/strimzi/duck/client/internalclientset/scheme"
+	v1beta2 "github.com/lendi-au/camel-k/addons/strimzi/duck/v1beta2"
 	rest "k8s.io/client-go/rest"
 )
 

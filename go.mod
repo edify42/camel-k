@@ -1,12 +1,12 @@
-module github.com/apache/camel-k
+module github.com/lendi-au/camel-k
 
 go 1.16
 
 require (
 	github.com/Masterminds/semver v1.5.0
-	github.com/apache/camel-k/pkg/apis/camel v0.0.0
-	github.com/apache/camel-k/pkg/client/camel v0.0.0
-	github.com/apache/camel-k/pkg/kamelet/repository v0.0.0
+	github.com/lendi-au/camel-k/pkg/apis/camel v0.0.0
+	github.com/lendi-au/camel-k/pkg/client/camel v0.0.0
+	github.com/lendi-au/camel-k/pkg/kamelet/repository v0.0.0
 	github.com/container-tools/spectrum v0.3.8
 	github.com/evanphx/json-patch v4.12.0+incompatible
 	github.com/fatih/camelcase v1.0.0
@@ -75,7 +75,7 @@ replace github.com/google/go-containerregistry => github.com/container-tools/go-
 
 // Local modules
 replace (
-	github.com/apache/camel-k/pkg/apis/camel => ./pkg/apis/camel
-	github.com/apache/camel-k/pkg/client/camel => ./pkg/client/camel
-	github.com/apache/camel-k/pkg/kamelet/repository => ./pkg/kamelet/repository
+	github.com/lendi-au/camel-k/pkg/apis/camel => ./pkg/apis/camel
+	github.com/lendi-au/camel-k/pkg/client/camel => ./pkg/client/camel
+	github.com/lendi-au/camel-k/pkg/kamelet/repository => ./pkg/kamelet/repository
 )

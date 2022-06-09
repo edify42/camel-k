@@ -22,7 +22,7 @@ package internalclientset
 import (
 	"fmt"
 
-	kafkav1beta2 "github.com/apache/camel-k/addons/strimzi/duck/client/internalclientset/typed/duck/v1beta2"
+	kafkav1beta2 "github.com/lendi-au/camel-k/addons/strimzi/duck/client/internalclientset/typed/duck/v1beta2"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
