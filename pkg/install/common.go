@@ -35,10 +35,12 @@ import (
 	"github.com/apache/camel-k/pkg/util/openshift"
 )
 
-// ResourceCustomizer can be used to inject code that changes the objects before they are created
+const serviceAccountName = "camel-k-operator"
+
+// ResourceCustomizer can be used to inject code that changes the objects before they are created.
 type ResourceCustomizer func(object ctrl.Object) ctrl.Object
 
-// IdentityResourceCustomizer is a ResourceCustomizer that does nothing
+// IdentityResourceCustomizer is a ResourceCustomizer that does nothing.
 var IdentityResourceCustomizer = func(object ctrl.Object) ctrl.Object {
 	return object
 }
@@ -50,6 +52,7 @@ var RemoveIngressRoleCustomizer = func(object ctrl.Object) ctrl.Object {
 			for _, group := range rule.APIGroups {
 				if group == networking.GroupName {
 					role.Rules = append(role.Rules[:i], role.Rules[i+1:]...)
+
 					break rules
 				}
 			}
@@ -58,7 +61,7 @@ var RemoveIngressRoleCustomizer = func(object ctrl.Object) ctrl.Object {
 	return object
 }
 
-// Resources installs named resources from the project resource directory
+// Resources installs named resources from the project resource directory.
 func Resources(ctx context.Context, c client.Client, namespace string, force bool, customizer ResourceCustomizer, names ...string) error {
 	return ResourcesOrCollect(ctx, c, namespace, nil, force, customizer, names...)
 }
@@ -73,14 +76,20 @@ func ResourcesOrCollect(ctx context.Context, c client.Client, namespace string, 
 	return nil
 }
 
-// Resource installs a single named resource from the project resource directory
+// Resource installs a single named resource from the project resource directory.
 func Resource(ctx context.Context, c client.Client, namespace string, force bool, customizer ResourceCustomizer, name string) error {
 	return ResourceOrCollect(ctx, c, namespace, nil, force, customizer, name)
 }
 
 func ResourceOrCollect(ctx context.Context, c client.Client, namespace string, collection *kubernetes.Collection,
 	force bool, customizer ResourceCustomizer, name string) error {
-	obj, err := kubernetes.LoadResourceFromYaml(c.GetScheme(), resources.ResourceAsString(name))
+
+	content, err := resources.ResourceAsString(name)
+	if err != nil {
+		return err
+	}
+
+	obj, err := kubernetes.LoadResourceFromYaml(c.GetScheme(), content)
 	if err != nil {
 		return err
 	}

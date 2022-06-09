@@ -59,7 +59,7 @@ The following configuration options are available:
 
 | container.port-name
 | string
-| To configure a different port name for the port exposed by the container (default `http`).
+| To configure a different port name for the port exposed by the container. It defaults to `http` only when the `expose` parameter is true.
 
 | container.service-port
 | int
@@ -83,59 +83,72 @@ The following configuration options are available:
 
 | container.probes-enabled
 | bool
-| ProbesEnabled enable/disable probes on the container (default `false`)
+| DeprecatedProbesEnabled enable/disable probes on the container (default `false`)
+Deprecated: replaced by the health trait.
 
 | container.liveness-scheme
 | string
 | Scheme to use when connecting. Defaults to HTTP. Applies to the liveness probe.
+Deprecated: replaced by the health trait.
 
 | container.liveness-initial-delay
 | int32
 | Number of seconds after the container has started before liveness probes are initiated.
+Deprecated: replaced by the health trait.
 
 | container.liveness-timeout
 | int32
 | Number of seconds after which the probe times out. Applies to the liveness probe.
+Deprecated: replaced by the health trait.
 
 | container.liveness-period
 | int32
 | How often to perform the probe. Applies to the liveness probe.
+Deprecated: replaced by the health trait.
 
 | container.liveness-success-threshold
 | int32
 | Minimum consecutive successes for the probe to be considered successful after having failed.
 Applies to the liveness probe.
+Deprecated: replaced by the health trait.
 
 | container.liveness-failure-threshold
 | int32
 | Minimum consecutive failures for the probe to be considered failed after having succeeded.
 Applies to the liveness probe.
+Deprecated: replaced by the health trait.
 
 | container.readiness-scheme
 | string
 | Scheme to use when connecting. Defaults to HTTP. Applies to the readiness probe.
+Deprecated: replaced by the health trait.
 
 | container.readiness-initial-delay
 | int32
 | Number of seconds after the container has started before readiness probes are initiated.
+Deprecated: replaced by the health trait.
 
 | container.readiness-timeout
 | int32
 | Number of seconds after which the probe times out. Applies to the readiness probe.
+Deprecated: replaced by the health trait.
 
 | container.readiness-period
 | int32
 | How often to perform the probe. Applies to the readiness probe.
+Deprecated: replaced by the health trait.
 
 | container.readiness-success-threshold
 | int32
 | Minimum consecutive successes for the probe to be considered successful after having failed.
 Applies to the readiness probe.
+Deprecated: replaced by the health trait.
 
 | container.readiness-failure-threshold
 | int32
 | Minimum consecutive failures for the probe to be considered failed after having succeeded.
 Applies to the readiness probe.
+Deprecated: replaced by the health trait.
 
 |===
 

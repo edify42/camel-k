@@ -216,7 +216,7 @@ func newCmdCompletionBash(root *cobra.Command) *cobra.Command {
 		Run: func(_ *cobra.Command, _ []string) {
 			err := root.GenBashCompletion(root.OutOrStdout())
 			if err != nil {
-				fmt.Print(err.Error())
+				fmt.Fprint(root.ErrOrStderr(), err.Error())
 			}
 		},
 		Annotations: map[string]string{
@@ -285,8 +285,7 @@ func configureKnownBashCompletions(command *cobra.Command) {
 }
 
 func configureBashAnnotationForFlag(command *cobra.Command, flagName string, annotations map[string][]string) {
-	flag := command.Flag(flagName)
-	if flag != nil {
+	if flag := command.Flag(flagName); flag != nil {
 		flag.Annotations = annotations
 	}
 }

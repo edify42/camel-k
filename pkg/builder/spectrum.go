@@ -20,11 +20,14 @@ package builder
 import (
 	"bufio"
 	"context"
+	"io"
 	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
+
+	"go.uber.org/multierr"
 
 	spectrum "github.com/container-tools/spectrum/pkg/builder"
 
@@ -100,11 +103,10 @@ func (t *spectrumTask) Do(ctx context.Context) v1.BuildStatus {
 		if err != nil {
 			return status.Failed(err)
 		}
-		defer os.RemoveAll(registryConfigDir)
 	}
 
 	newStdR, newStdW, pipeErr := os.Pipe()
-	defer newStdW.Close()
+	defer util.CloseQuietly(newStdW)
 
 	if pipeErr != nil {
 		// In the unlikely case of an error, use stdout instead of aborting
@@ -126,18 +128,24 @@ func (t *spectrumTask) Do(ctx context.Context) v1.BuildStatus {
 
 	go readSpectrumLogs(newStdR)
 	digest, err := spectrum.Build(options, contextDir+":"+path.Join(DeploymentDir))
-
 	if err != nil {
+		_ = os.RemoveAll(registryConfigDir)
 		return status.Failed(err)
 	}
 
 	status.Image = t.task.Image
 	status.Digest = digest
 
+	if registryConfigDir != "" {
+		if err := os.RemoveAll(registryConfigDir); err != nil {
+			return status.Failed(err)
+		}
+	}
+
 	return status
 }
 
-func readSpectrumLogs(newStdOut *os.File) {
+func readSpectrumLogs(newStdOut io.Reader) {
 	scanner := bufio.NewScanner(newStdOut)
 
 	for scanner.Scan() {
@@ -154,13 +162,17 @@ func mountSecret(ctx context.Context, c client.Client, namespace, name string) (
 
 	secret, err := c.CoreV1().Secrets(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		os.RemoveAll(dir)
+		if removeErr := os.RemoveAll(dir); removeErr != nil {
+			err = multierr.Append(err, removeErr)
+		}
 		return "", err
 	}
 
 	for file, content := range secret.Data {
-		if err := ioutil.WriteFile(filepath.Join(dir, remap(file)), content, 0600); err != nil {
-			os.RemoveAll(dir)
+		if err := ioutil.WriteFile(filepath.Join(dir, remap(file)), content, 0o600); err != nil {
+			if removeErr := os.RemoveAll(dir); removeErr != nil {
+				err = multierr.Append(err, removeErr)
+			}
 			return "", err
 		}
 	}

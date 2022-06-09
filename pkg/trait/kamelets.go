@@ -20,7 +20,6 @@ package trait
 import (
 	"errors"
 	"fmt"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -43,7 +42,7 @@ import (
 
 // The kamelets trait is a platform trait used to inject Kamelets into the integration runtime.
 //
-// +camel-k:trait=kamelets
+// +camel-k:trait=kamelets.
 type kameletsTrait struct {
 	BaseTrait `property:",squash"`
 	// Automatically inject all referenced Kamelets and their default configuration (enabled by default)
@@ -66,14 +65,9 @@ func newConfigurationKey(kamelet, configurationID string) configurationKey {
 
 const (
 	contentKey = "content"
-	schemaKey  = "schema"
 
 	kameletLabel              = "camel.apache.org/kamelet"
 	kameletConfigurationLabel = "camel.apache.org/kamelet.configuration"
-)
-
-var (
-	kameletNameRegexp = regexp.MustCompile("kamelet:(?://)?([a-z0-9-.]+(/[a-z0-9-.]+)?)(?:$|[^a-z0-9-.].*)")
 )
 
 func newKameletsTrait() Trait {
@@ -82,7 +76,7 @@ func newKameletsTrait() Trait {
 	}
 }
 
-// IsPlatformTrait overrides base class method
+// IsPlatformTrait overrides base class method.
 func (t *kameletsTrait) IsPlatformTrait() bool {
 	return true
 }
@@ -260,13 +254,16 @@ func (t *kameletsTrait) configureApplicationProperties(e *Environment) error {
 func (t *kameletsTrait) addKameletAsSource(e *Environment, kamelet *v1alpha1.Kamelet) error {
 	sources := make([]v1.SourceSpec, 0)
 
+	// nolint: staticcheck
 	if kamelet.Spec.Template != nil || kamelet.Spec.Flow != nil {
 		template := kamelet.Spec.Template
 		if template == nil {
 			// Backward compatibility with Kamelets using flow
-			template = &v1.Template{
-				RawMessage: kamelet.Spec.Flow.RawMessage,
+			var bytes []byte = kamelet.Spec.Flow.RawMessage
+			template = &v1alpha1.Template{
+				RawMessage: make(v1alpha1.RawMessage, len(bytes)),
 			}
+			copy(template.RawMessage, bytes)
 		}
 		flowData, err := dsl.TemplateToYamlDSL(*template, kamelet.Name)
 		if err != nil {
@@ -313,7 +310,7 @@ func (t *kameletsTrait) addKameletAsSource(e *Environment, kamelet *v1alpha1.Kam
 
 func (t *kameletsTrait) addConfigurationSecrets(e *Environment) error {
 	for _, k := range t.getConfigurationKeys() {
-		var options = metav1.ListOptions{
+		options := metav1.ListOptions{
 			LabelSelector: fmt.Sprintf("%s=%s", kameletLabel, k.kamelet),
 		}
 		if k.configurationID != "" {

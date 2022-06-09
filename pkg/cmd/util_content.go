@@ -18,29 +18,25 @@ limitations under the License.
 package cmd
 
 import (
+	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
+
+	"github.com/apache/camel-k/pkg/util"
 )
 
 const (
+	// Megabyte represent the related unit.
 	Megabyte = 1 << 20
+	// Kilobyte represent the related unit.
 	Kilobyte = 1 << 10
 )
 
-func fileSize(source string) (int64, error) {
-	fi, err := os.Stat(source)
-	if err != nil {
-		return -1, err
-	}
-	return fi.Size(), nil
-}
-
-func loadRawContent(source string) ([]byte, string, error) {
+func loadRawContent(ctx context.Context, source string) ([]byte, string, error) {
 	var content []byte
 	var err error
 
@@ -50,20 +46,21 @@ func loadRawContent(source string) ([]byte, string, error) {
 	}
 
 	if ok {
-		content, err = ioutil.ReadFile(source)
+		content, err = util.ReadFile(source)
 	} else {
-		u, err := url.Parse(source)
+		var u *url.URL
+		u, err = url.Parse(source)
 		if err != nil {
 			return nil, "", err
 		}
 
 		switch u.Scheme {
 		case "github":
-			content, err = loadContentGitHub(u)
+			content, err = loadContentGitHub(ctx, u)
 		case "http":
-			content, err = loadContentHTTP(u)
+			content, err = loadContentHTTP(ctx, u)
 		case "https":
-			content, err = loadContentHTTP(u)
+			content, err = loadContentHTTP(ctx, u)
 		default:
 			return nil, "", fmt.Errorf("missing file or unsupported scheme %s", u.Scheme)
 		}
@@ -83,8 +80,8 @@ func isBinary(contentType string) bool {
 	return !strings.HasPrefix(contentType, "text")
 }
 
-func loadTextContent(source string, base64Compression bool) (string, string, bool, error) {
-	content, contentType, err := loadRawContent(source)
+func loadTextContent(ctx context.Context, source string, base64Compression bool) (string, string, bool, error) {
+	content, contentType, err := loadRawContent(ctx, source)
 	if err != nil {
 		return "", "", false, err
 	}
@@ -97,9 +94,15 @@ func loadTextContent(source string, base64Compression bool) (string, string, boo
 	return string(content), contentType, false, nil
 }
 
-func loadContentHTTP(u *url.URL) ([]byte, error) {
-	// nolint: gosec
-	resp, err := http.Get(u.String())
+func loadContentHTTP(ctx context.Context, u fmt.Stringer) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	c := &http.Client{}
+
+	resp, err := c.Do(req)
 	if err != nil {
 		return []byte{}, err
 	}
@@ -111,15 +114,10 @@ func loadContentHTTP(u *url.URL) ([]byte, error) {
 		return []byte{}, fmt.Errorf("the provided URL %s is not reachable, error code is %d", u.String(), resp.StatusCode)
 	}
 
-	content, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return []byte{}, err
-	}
-
-	return content, nil
+	return io.ReadAll(resp.Body)
 }
 
-func loadContentGitHub(u *url.URL) ([]byte, error) {
+func loadContentGitHub(ctx context.Context, u *url.URL) ([]byte, error) {
 	src := u.Scheme + ":" + u.Opaque
 	re := regexp.MustCompile(`^github:([^/]+)/([^/]+)/(.+)$`)
 
@@ -139,5 +137,5 @@ func loadContentGitHub(u *url.URL) ([]byte, error) {
 		return []byte{}, err
 	}
 
-	return loadContentHTTP(rawURL)
+	return loadContentHTTP(ctx, rawURL)
 }

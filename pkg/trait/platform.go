@@ -31,7 +31,7 @@ import (
 // This feature is especially useful in contexts where there's no need to provide a custom configuration for the platform
 // (e.g. on OpenShift the default settings work, since there's an embedded container image registry).
 //
-// +camel-k:trait=platform
+// +camel-k:trait=platform.
 type platformTrait struct {
 	BaseTrait `property:",squash"`
 	// To create a default (empty) platform when the platform is missing.
@@ -120,6 +120,13 @@ func (t *platformTrait) getOrCreatePlatform(e *Environment) (*v1.IntegrationPlat
 				defaultPlatform.Labels = make(map[string]string)
 			}
 			defaultPlatform.Labels["camel.apache.org/platform.generated"] = True
+			// Cascade the operator id in charge to reconcile the Integration
+			if e.Integration.Annotations != nil && e.Integration.Annotations[v1.OperatorIDAnnotation] != "" {
+				if defaultPlatform.Annotations == nil {
+					defaultPlatform.Annotations = make(map[string]string)
+				}
+				defaultPlatform.Annotations[v1.OperatorIDAnnotation] = e.Integration.Annotations[v1.OperatorIDAnnotation]
+			}
 			pl = &defaultPlatform
 			e.Resources.Add(pl)
 			return pl, nil
@@ -128,12 +135,12 @@ func (t *platformTrait) getOrCreatePlatform(e *Environment) (*v1.IntegrationPlat
 	return pl, err
 }
 
-// IsPlatformTrait overrides base class method
+// IsPlatformTrait overrides base class method.
 func (t *platformTrait) IsPlatformTrait() bool {
 	return true
 }
 
-// RequiresIntegrationPlatform overrides base class method
+// RequiresIntegrationPlatform overrides base class method.
 func (t *platformTrait) RequiresIntegrationPlatform() bool {
 	return false
 }

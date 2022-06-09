@@ -28,3 +28,6 @@ resources:
 - ../scorecard
 - ../rbac
 - ../rbac/openshift
+
+patchesStrategicMerge:
+- patch-delete-user-cluster-role.yaml

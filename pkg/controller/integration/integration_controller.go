@@ -19,6 +19,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"time"
 
@@ -30,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
-
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -82,15 +82,21 @@ func add(mgr manager.Manager, c client.Client, r reconcile.Reconciler) error {
 		For(&v1.Integration{}, builder.WithPredicates(
 			platform.FilteringFuncs{
 				UpdateFunc: func(e event.UpdateEvent) bool {
-					old := e.ObjectOld.(*v1.Integration)
-					it := e.ObjectNew.(*v1.Integration)
+					old, ok := e.ObjectOld.(*v1.Integration)
+					if !ok {
+						return false
+					}
+					it, ok := e.ObjectNew.(*v1.Integration)
+					if !ok {
+						return false
+					}
 					// Observe the time to first readiness metric
 					previous := old.Status.GetCondition(v1.IntegrationConditionReady)
 					if next := it.Status.GetCondition(v1.IntegrationConditionReady); (previous == nil || previous.Status != corev1.ConditionTrue && (previous.FirstTruthyTime == nil || previous.FirstTruthyTime.IsZero())) &&
 						next != nil && next.Status == corev1.ConditionTrue && next.FirstTruthyTime != nil && !next.FirstTruthyTime.IsZero() &&
 						it.Status.InitializationTimestamp != nil {
 						duration := next.FirstTruthyTime.Time.Sub(it.Status.InitializationTimestamp.Time)
-						Log.WithValues("request-namespace", it.Namespace, "request-name", it.Name).
+						Log.WithValues("request-namespace", it.Namespace, "request-name", it.Name, "ready-after", duration.Seconds()).
 							ForIntegration(it).Infof("First readiness after %s", duration)
 						timeToFirstReadiness.Observe(duration.Seconds())
 					}
@@ -110,8 +116,12 @@ func add(mgr manager.Manager, c client.Client, r reconcile.Reconciler) error {
 		// or running phase.
 		Watches(&source.Kind{Type: &v1.IntegrationKit{}},
 			handler.EnqueueRequestsFromMapFunc(func(a ctrl.Object) []reconcile.Request {
-				kit := a.(*v1.IntegrationKit)
 				var requests []reconcile.Request
+				kit, ok := a.(*v1.IntegrationKit)
+				if !ok {
+					log.Error(fmt.Errorf("type assertion failed: %v", a), "Failed to retrieve integration list")
+					return requests
+				}
 
 				if kit.Status.Phase != v1.IntegrationKitPhaseReady && kit.Status.Phase != v1.IntegrationKitPhaseError {
 					return requests
@@ -128,9 +138,13 @@ func add(mgr manager.Manager, c client.Client, r reconcile.Reconciler) error {
 					return requests
 				}
 
-				for _, integration := range list.Items {
-					if match, err := integrationMatches(&integration, kit); err != nil {
+				for i := range list.Items {
+					integration := &list.Items[i]
+					log.Debug("Integration Controller: Assessing integration", "integration", integration.Name, "namespace", integration.Namespace)
+
+					if match, err := integrationMatches(integration, kit); err != nil {
 						log.Errorf(err, "Error matching integration %q with kit %q", integration.Name, kit.Name)
+
 						continue
 					} else if !match {
 						continue
@@ -153,8 +167,12 @@ func add(mgr manager.Manager, c client.Client, r reconcile.Reconciler) error {
 		// requests for any integrations that are in phase waiting for platform
 		Watches(&source.Kind{Type: &v1.IntegrationPlatform{}},
 			handler.EnqueueRequestsFromMapFunc(func(a ctrl.Object) []reconcile.Request {
-				p := a.(*v1.IntegrationPlatform)
 				var requests []reconcile.Request
+				p, ok := a.(*v1.IntegrationPlatform)
+				if !ok {
+					log.Error(fmt.Errorf("type assertion failed: %v", a), "Failed to list integrations")
+					return requests
+				}
 
 				if p.Status.Phase == v1.IntegrationPlatformPhaseReady {
 					list := &v1.IntegrationList{}
@@ -186,13 +204,17 @@ func add(mgr manager.Manager, c client.Client, r reconcile.Reconciler) error {
 				return requests
 			})).
 		// Watch for the owned Deployments
-		Owns(&appsv1.Deployment{}).
+		Owns(&appsv1.Deployment{}, builder.WithPredicates(StatusChangedPredicate{})).
 		// Watch for the owned CronJobs
-		Owns(&batchv1beta1.CronJob{}).
+		Owns(&batchv1beta1.CronJob{}, builder.WithPredicates(StatusChangedPredicate{})).
 		// Watch for the Integration Pods
 		Watches(&source.Kind{Type: &corev1.Pod{}},
 			handler.EnqueueRequestsFromMapFunc(func(a ctrl.Object) []reconcile.Request {
-				pod := a.(*corev1.Pod)
+				pod, ok := a.(*corev1.Pod)
+				if !ok {
+					log.Error(fmt.Errorf("type assertion failed: %v", a), "Failed to list integration pods")
+					return []reconcile.Request{}
+				}
 				return []reconcile.Request{
 					{
 						NamespacedName: types.NamespacedName{
@@ -213,7 +235,7 @@ func add(mgr manager.Manager, c client.Client, r reconcile.Reconciler) error {
 		if ok, err = kubernetes.CheckPermission(ctx, c, serving.GroupName, "services", platform.GetOperatorWatchNamespace(), "", "watch"); err != nil {
 			return err
 		} else if ok {
-			b.Owns(&servingv1.Service{})
+			b.Owns(&servingv1.Service{}, builder.WithPredicates(StatusChangedPredicate{}))
 		}
 	}
 
@@ -222,7 +244,7 @@ func add(mgr manager.Manager, c client.Client, r reconcile.Reconciler) error {
 
 var _ reconcile.Reconciler = &reconcileIntegration{}
 
-// reconcileIntegration reconciles an Integration object
+// reconcileIntegration reconciles an Integration object.
 type reconcileIntegration struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the API server
@@ -231,7 +253,7 @@ type reconcileIntegration struct {
 	recorder record.EventRecorder
 }
 
-// Reconcile reads that state of the cluster for a Integration object and makes changes based on the state read
+// Reconcile reads that state of the cluster for an Integration object and makes changes based on the state read
 // and what is in the Integration.Spec
 // Note:
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
@@ -323,6 +345,7 @@ func (r *reconcileIntegration) update(ctx context.Context, base *v1.Integration,
 	}
 
 	target.Status.Digest = d
+	target.Status.ObservedGeneration = base.Generation
 
 	err = r.client.Status().Patch(ctx, target, ctrl.MergeFrom(base))
 

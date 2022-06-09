@@ -19,11 +19,12 @@ package trait
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -35,11 +36,14 @@ import (
 // The deployer trait is responsible for deploying the resources owned by the integration, and can be used
 // to explicitly select the underlying controller that will manage the integration pods.
 //
-// +camel-k:trait=deployer
+// +camel-k:trait=deployer.
 type deployerTrait struct {
 	BaseTrait `property:",squash"`
 	// Allows to explicitly select the desired deployment kind between `deployment`, `cron-job` or `knative-service` when creating the resources for running the integration.
 	Kind string `property:"kind" json:"kind,omitempty"`
+	// Use server-side apply to update the owned resources (default `true`).
+	// Note that it automatically falls back to client-side patching, if SSA is not available, e.g., on old Kubernetes clusters.
+	UseSSA *bool `property:"use-ssa" json:"useSSA,omitempty"`
 }
 
 var _ ControllerStrategySelector = &deployerTrait{}
@@ -61,19 +65,21 @@ func (t *deployerTrait) Apply(e *Environment) error {
 	e.PostActions = append(e.PostActions, func(env *Environment) error {
 		for _, resource := range env.Resources.Items() {
 			// We assume that server-side apply is enabled by default.
-			// It is currently convoluted to check pro-actively whether server-side apply
+			// It is currently convoluted to check proactively whether server-side apply
 			// is enabled. This is possible to fetch the OpenAPI endpoint, which returns
 			// the entire server API document, then lookup the resource PATCH endpoint, and
 			// check its list of accepted MIME types.
 			// As a simpler solution, we fall back to client-side apply at the first
 			// 415 error, and assume server-side apply is not available globally.
-			if hasServerSideApply {
-				if err := t.serverSideApply(env, resource); err == nil {
+			if hasServerSideApply && IsNilOrTrue(t.UseSSA) {
+				err := t.serverSideApply(env, resource)
+				switch {
+				case err == nil:
 					continue
-				} else if isIncompatibleServerError(err) {
+				case isIncompatibleServerError(err):
 					t.L.Info("Fallback to client-side apply to patch resources")
 					hasServerSideApply = false
-				} else {
+				default:
 					// Keep server-side apply unless server is incompatible with it
 					return err
 				}
@@ -89,13 +95,13 @@ func (t *deployerTrait) Apply(e *Environment) error {
 }
 
 func (t *deployerTrait) serverSideApply(env *Environment, resource ctrl.Object) error {
-	target, err := patch.PositiveApplyPatch(resource)
+	target, err := patch.ApplyPatch(resource)
 	if err != nil {
 		return err
 	}
 	err = env.Client.Patch(env.Ctx, target, ctrl.Apply, ctrl.ForceOwnership, ctrl.FieldOwner("camel-k-operator"))
 	if err != nil {
-		return fmt.Errorf("error during apply resource: %s/%s: %s", resource.GetNamespace(), resource.GetName(), err)
+		return fmt.Errorf("error during apply resource: %s/%s: %w", resource.GetNamespace(), resource.GetName(), err)
 	}
 	// Update the resource with the response returned from the API server
 	return t.unstructuredToRuntimeObject(target, resource)
@@ -105,8 +111,8 @@ func (t *deployerTrait) clientSideApply(env *Environment, resource ctrl.Object) 
 	err := env.Client.Create(env.Ctx, resource)
 	if err == nil {
 		return nil
-	} else if !errors.IsAlreadyExists(err) {
-		return fmt.Errorf("error during create resource: %s/%s: %s", resource.GetNamespace(), resource.GetName(), err)
+	} else if !k8serrors.IsAlreadyExists(err) {
+		return fmt.Errorf("error during create resource: %s/%s: %w", resource.GetNamespace(), resource.GetName(), err)
 	}
 	object := &unstructured.Unstructured{}
 	object.SetNamespace(resource.GetNamespace())
@@ -116,7 +122,7 @@ func (t *deployerTrait) clientSideApply(env *Environment, resource ctrl.Object) 
 	if err != nil {
 		return err
 	}
-	p, err := patch.PositiveMergePatch(object, resource)
+	p, err := patch.MergePatch(object, resource)
 	if err != nil {
 		return err
 	} else if len(p) == 0 {
@@ -125,7 +131,7 @@ func (t *deployerTrait) clientSideApply(env *Environment, resource ctrl.Object) 
 	}
 	err = env.Client.Patch(env.Ctx, resource, ctrl.RawPatch(types.MergePatchType, p))
 	if err != nil {
-		return fmt.Errorf("error during patch %s/%s: %s", resource.GetNamespace(), resource.GetName(), err)
+		return fmt.Errorf("error during patch %s/%s: %w", resource.GetNamespace(), resource.GetName(), err)
 	}
 	return nil
 }
@@ -146,11 +152,13 @@ func isIncompatibleServerError(err error) bool {
 
 	// 415: Unsupported media type means we're talking to a server which doesn't
 	// support server-side apply.
-	if _, ok := err.(*errors.StatusError); !ok {
-		// Non-StatusError means the error isn't because the server is incompatible.
-		return false
+	var serr *k8serrors.StatusError
+	if errors.As(err, &serr) {
+		return serr.Status().Code == http.StatusUnsupportedMediaType
 	}
-	return err.(*errors.StatusError).Status().Code == http.StatusUnsupportedMediaType
+
+	// Non-StatusError means the error isn't because the server is incompatible.
+	return false
 }
 
 func (t *deployerTrait) SelectControllerStrategy(e *Environment) (*ControllerStrategy, error) {
@@ -168,12 +176,12 @@ func (t *deployerTrait) ControllerStrategySelectorOrder() int {
 	return 0
 }
 
-// IsPlatformTrait overrides base class method
+// IsPlatformTrait overrides base class method.
 func (t *deployerTrait) IsPlatformTrait() bool {
 	return true
 }
 
-// RequiresIntegrationPlatform overrides base class method
+// RequiresIntegrationPlatform overrides base class method.
 func (t *deployerTrait) RequiresIntegrationPlatform() bool {
 	return false
 }

@@ -19,6 +19,7 @@ package builder
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path"
 	"sort"
@@ -65,6 +66,7 @@ func (t *builderTask) Do(ctx context.Context) v1.BuildStatus {
 	}
 
 	// Add sources
+	// nolint: staticcheck
 	for _, data := range t.task.Sources {
 		c.Resources = append(c.Resources, resource{
 			Content: []byte(data.Content),
@@ -73,6 +75,7 @@ func (t *builderTask) Do(ctx context.Context) v1.BuildStatus {
 	}
 
 	// Add resources
+	// nolint: staticcheck
 	for _, data := range t.task.Resources {
 		t := path.Join("resources", data.Name)
 
@@ -104,7 +107,7 @@ steps:
 		select {
 
 		case <-ctx.Done():
-			if ctx.Err() == context.Canceled {
+			if errors.Is(ctx.Err(), context.Canceled) {
 				// Context canceled
 				result.Phase = v1.BuildPhaseInterrupted
 			} else {

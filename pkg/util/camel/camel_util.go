@@ -18,6 +18,7 @@ limitations under the License.
 package camel
 
 import (
+	"path"
 	"sort"
 	"strings"
 
@@ -25,6 +26,17 @@ import (
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
 	"github.com/apache/camel-k/pkg/util/log"
+)
+
+var (
+	BasePath                  = "/etc/camel"
+	ConfDPath                 = path.Join(BasePath, "conf.d")
+	SourcesMountPath          = path.Join(BasePath, "sources")
+	ResourcesDefaultMountPath = path.Join(BasePath, "resources")
+	ConfigResourcesMountPath  = path.Join(ConfDPath, "_resources")
+	ConfigConfigmapsMountPath = path.Join(ConfDPath, "_configmaps")
+	ConfigSecretsMountPath    = path.Join(ConfDPath, "_secrets")
+	ServiceBindingsMountPath  = path.Join(ConfDPath, "_servicebindings")
 )
 
 func findBestMatch(catalogs []v1.CamelCatalog, runtime v1.RuntimeSpec) (*RuntimeCatalog, error) {
@@ -70,6 +82,7 @@ func newCatalogVersionCollection(catalogs []v1.CamelCatalog) CatalogVersionColle
 		rv, err := semver.NewVersion(catalogs[i].Spec.Runtime.Version)
 		if err != nil {
 			log.Debugf("Invalid semver version (runtime) %s", rv)
+
 			continue
 		}
 

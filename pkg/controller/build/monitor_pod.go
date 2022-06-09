@@ -35,6 +35,7 @@ import (
 	"github.com/pkg/errors"
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	"github.com/apache/camel-k/pkg/util/kubernetes"
 )
 
 const timeoutAnnotation = "camel.apache.org/timeout"
@@ -50,17 +51,17 @@ type monitorPodAction struct {
 	reader ctrl.Reader
 }
 
-// Name returns a common name of the action
+// Name returns a common name of the action.
 func (action *monitorPodAction) Name() string {
 	return "monitor-pod"
 }
 
-// CanHandle tells whether this action can handle the build
+// CanHandle tells whether this action can handle the build.
 func (action *monitorPodAction) CanHandle(build *v1.Build) bool {
 	return build.Status.Phase == v1.BuildPhasePending || build.Status.Phase == v1.BuildPhaseRunning
 }
 
-// Handle handles the builds
+// Handle handles the builds.
 func (action *monitorPodAction) Handle(ctx context.Context, build *v1.Build) (*v1.Build, error) {
 	pod, err := getBuilderPod(ctx, action.reader, build)
 	if err != nil {
@@ -97,7 +98,7 @@ func (action *monitorPodAction) Handle(ctx context.Context, build *v1.Build) (*v
 		if action.isPodScheduled(pod) {
 			build.Status.Phase = v1.BuildPhaseRunning
 		}
-		if time.Now().Sub(build.Status.StartedAt.Time) > build.Spec.Timeout.Duration {
+		if time.Since(build.Status.StartedAt.Time) > build.Spec.Timeout.Duration {
 			// Patch the Pod with an annotation, to identify termination signal
 			// has been sent because the Build has timed out
 			if err = action.addTimeoutAnnotation(ctx, pod, metav1.Now()); err != nil {
@@ -121,15 +122,18 @@ func (action *monitorPodAction) Handle(ctx context.Context, build *v1.Build) (*v
 		duration := finishedAt.Sub(build.Status.StartedAt.Time)
 		build.Status.Duration = duration.String()
 
+		buildCreator := kubernetes.GetCamelCreator(build)
 		// Account for the Build metrics
-		observeBuildResult(build, build.Status.Phase, duration)
+		observeBuildResult(build, build.Status.Phase, buildCreator, duration)
 
 		for _, task := range build.Spec.Tasks {
 			if t := task.Buildah; t != nil {
 				build.Status.Image = t.Image
+
 				break
 			} else if t := task.Kaniko; t != nil {
 				build.Status.Image = t.Image
+
 				break
 			}
 		}
@@ -137,6 +141,7 @@ func (action *monitorPodAction) Handle(ctx context.Context, build *v1.Build) (*v
 		for _, container := range pod.Status.ContainerStatuses {
 			if container.Name == "buildah" {
 				build.Status.Digest = container.State.Terminated.Message
+
 				break
 			}
 		}
@@ -163,8 +168,9 @@ func (action *monitorPodAction) Handle(ctx context.Context, build *v1.Build) (*v
 		duration := finishedAt.Sub(build.Status.StartedAt.Time)
 		build.Status.Duration = duration.String()
 
+		buildCreator := kubernetes.GetCamelCreator(build)
 		// Account for the Build metrics
-		observeBuildResult(build, build.Status.Phase, duration)
+		observeBuildResult(build, build.Status.Phase, buildCreator, duration)
 	}
 
 	return build, nil

@@ -19,17 +19,21 @@ package kameletbinding
 
 import (
 	"context"
+	"fmt"
 
-	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
-	"github.com/apache/camel-k/pkg/apis/camel/v1alpha1"
 	"github.com/pkg/errors"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	"github.com/apache/camel-k/pkg/apis/camel/v1alpha1"
 )
 
-// NewMonitorAction returns an action that monitors the kamelet binding after it's fully initialized
+// NewMonitorAction returns an action that monitors the KameletBinding after it's fully initialized.
 func NewMonitorAction() Action {
 	return &monitorAction{}
 }
@@ -70,7 +74,7 @@ func (action *monitorAction) Handle(ctx context.Context, kameletbinding *v1alpha
 	}
 
 	// Check if the integration needs to be changed
-	expected, err := createIntegrationFor(ctx, action.client, kameletbinding)
+	expected, err := CreateIntegrationFor(ctx, action.client, kameletbinding)
 	if err != nil {
 		return nil, err
 	}
@@ -89,31 +93,26 @@ func (action *monitorAction) Handle(ctx context.Context, kameletbinding *v1alpha
 		return target, nil
 	}
 
-	// Map integration phases to KameletBinding phases
+	// Map integration phase and conditions to KameletBinding
 	target := kameletbinding.DeepCopy()
-	if it.Status.Phase == v1.IntegrationPhaseRunning {
+
+	switch it.Status.Phase {
+
+	case v1.IntegrationPhaseRunning:
 		target.Status.Phase = v1alpha1.KameletBindingPhaseReady
-		target.Status.SetCondition(
-			v1alpha1.KameletBindingConditionReady,
-			corev1.ConditionTrue,
-			"",
-			"",
-		)
-	} else if it.Status.Phase == v1.IntegrationPhaseError {
+		setKameletBindingReadyCondition(target, &it)
+
+	case v1.IntegrationPhaseError:
 		target.Status.Phase = v1alpha1.KameletBindingPhaseError
-		target.Status.SetCondition(
-			v1alpha1.KameletBindingConditionReady,
-			corev1.ConditionFalse,
-			string(target.Status.Phase),
-			"",
-		)
-	} else {
+		setKameletBindingReadyCondition(target, &it)
+
+	default:
 		target.Status.Phase = v1alpha1.KameletBindingPhaseCreating
 		target.Status.SetCondition(
 			v1alpha1.KameletBindingConditionReady,
 			corev1.ConditionFalse,
 			string(target.Status.Phase),
-			"",
+			fmt.Sprintf("Integration %q is in %q phase", it.GetName(), target.Status.Phase),
 		)
 	}
 
@@ -122,4 +121,26 @@ func (action *monitorAction) Handle(ctx context.Context, kameletbinding *v1alpha
 	target.Status.Selector = it.Status.Selector
 
 	return target, nil
+}
+
+func setKameletBindingReadyCondition(kb *v1alpha1.KameletBinding, it *v1.Integration) {
+	if condition := it.Status.GetCondition(v1.IntegrationConditionReady); condition != nil {
+		message := condition.Message
+		if message == "" {
+			message = fmt.Sprintf("Integration %q readiness condition is %q", it.GetName(), condition.Status)
+		}
+		kb.Status.SetCondition(
+			v1alpha1.KameletBindingConditionReady,
+			condition.Status,
+			condition.Reason,
+			message,
+		)
+	} else {
+		kb.Status.SetCondition(
+			v1alpha1.KameletBindingConditionReady,
+			corev1.ConditionUnknown,
+			"",
+			fmt.Sprintf("Integration %q does not have a readiness condition", it.GetName()),
+		)
+	}
 }

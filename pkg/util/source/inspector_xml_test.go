@@ -19,12 +19,12 @@ package source
 
 import (
 	"fmt"
-	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-
+	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
 	"github.com/apache/camel-k/pkg/util/camel"
+
+	"github.com/stretchr/testify/assert"
 )
 
 const XMLKameletEip = `
@@ -36,11 +36,21 @@ const XMLKameletEip = `
   </route>
 </camelContext>
 `
+
 const XMLKameletEndpoint = `
 <camelContext xmlns="http://camel.apache.org/schema/spring">
   <route>
     <from uri="direct:start"/>
     <to uri="kamelet:foo/bar?baz=test"/>
+  </route>
+</camelContext>
+`
+
+const XMLWireTapEndpoint = `
+<camelContext xmlns="http://camel.apache.org/schema/spring">
+  <route>
+    <from uri="direct:start"/>
+    <wireTap uri="kamelet:foo/bar?baz=test"/>
   </route>
 </camelContext>
 `
@@ -58,9 +68,14 @@ func TestXMLKamelet(t *testing.T) {
 			source:   XMLKameletEndpoint,
 			kamelets: []string{"foo/bar"},
 		},
+		{
+			source:   XMLWireTapEndpoint,
+			kamelets: []string{"foo/bar"},
+		},
 	}
 
-	for i, test := range tc {
+	for i := range tc {
+		test := tc[i]
 		t.Run(fmt.Sprintf("TestXMLKamelet-%d", i), func(t *testing.T) {
 			code := v1.SourceSpec{
 				DataSpec: v1.DataSpec{

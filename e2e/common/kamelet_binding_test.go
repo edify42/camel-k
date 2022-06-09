@@ -52,7 +52,7 @@ func TestErrorHandler(t *testing.T) {
 		}
 
 		errorHandler := map[string]interface{}{
-			"dead-letter-channel": map[string]interface{}{
+			"sink": map[string]interface{}{
 				"endpoint": map[string]interface{}{
 					"ref": map[string]string{
 						"kind":       "Kamelet",
@@ -65,8 +65,9 @@ func TestErrorHandler(t *testing.T) {
 				}}}
 
 		t.Run("throw error test", func(t *testing.T) {
+			RegisterTestingT(t)
 
-			Expect(BindKameletToWithErrorHandler(ns, "throw-error-binding", from, to, map[string]string{"message": "throw Error"}, map[string]string{"loggerName": "integrationLogger"}, errorHandler)()).To(Succeed())
+			Expect(BindKameletToWithErrorHandler(ns, "throw-error-binding", map[string]string{}, from, to, map[string]string{"message": "throw Error"}, map[string]string{"loggerName": "integrationLogger"}, errorHandler)()).To(Succeed())
 
 			Eventually(IntegrationPodPhase(ns, "throw-error-binding"), TestTimeoutMedium).Should(Equal(corev1.PodRunning))
 			Eventually(IntegrationLogs(ns, "throw-error-binding"), TestTimeoutShort).Should(ContainSubstring("kameletErrorHandler"))
@@ -75,8 +76,9 @@ func TestErrorHandler(t *testing.T) {
 		})
 
 		t.Run("don't throw error test", func(t *testing.T) {
+			RegisterTestingT(t)
 
-			Expect(BindKameletToWithErrorHandler(ns, "no-error-binding", from, to, map[string]string{"message": "true"}, map[string]string{"loggerName": "integrationLogger"}, errorHandler)()).To(Succeed())
+			Expect(BindKameletToWithErrorHandler(ns, "no-error-binding", map[string]string{}, from, to, map[string]string{"message": "true"}, map[string]string{"loggerName": "integrationLogger"}, errorHandler)()).To(Succeed())
 
 			Eventually(IntegrationPodPhase(ns, "no-error-binding"), TestTimeoutMedium).Should(Equal(corev1.PodRunning))
 			Eventually(IntegrationLogs(ns, "no-error-binding"), TestTimeoutShort).ShouldNot(ContainSubstring("kameletErrorHandler"))

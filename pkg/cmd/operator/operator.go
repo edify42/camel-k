@@ -25,7 +25,10 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
+
+	"go.uber.org/automaxprocs/maxprocs"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -37,10 +40,12 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/klog/v2"
+	klog "k8s.io/klog/v2"
 
+	"go.uber.org/zap/zapcore"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -58,11 +63,11 @@ import (
 	"github.com/apache/camel-k/pkg/platform"
 	"github.com/apache/camel-k/pkg/util/defaults"
 	"github.com/apache/camel-k/pkg/util/kubernetes"
+	camelLog "github.com/apache/camel-k/pkg/util/log"
 )
 
 var log = logf.Log.WithName("cmd")
-
-var GitCommit string
+var camLog = camelLog.Log.WithName("log")
 
 func printVersion() {
 	log.Info(fmt.Sprintf("Go Version: %s", runtime.Version()))
@@ -71,11 +76,22 @@ func printVersion() {
 	log.Info(fmt.Sprintf("Kaniko Version: %v", defaults.KanikoVersion))
 	log.Info(fmt.Sprintf("Camel K Operator Version: %v", defaults.Version))
 	log.Info(fmt.Sprintf("Camel K Default Runtime Version: %v", defaults.DefaultRuntimeVersion))
-	log.Info(fmt.Sprintf("Camel K Git Commit: %v", GitCommit))
+	log.Info(fmt.Sprintf("Camel K Git Commit: %v", defaults.GitCommit))
+
+	// Will only appear if DEBUG level has been enabled using the env var LOG_LEVEL
+	camLog.Debug("*** DEBUG level messages will be logged ***")
 }
 
-// Run starts the Camel K operator
-func Run(healthPort, monitoringPort int32, leaderElection bool) {
+type loglvl struct {
+	Level zapcore.Level
+}
+
+func (l loglvl) Enabled(lvl zapcore.Level) bool {
+	return l.Level.Enabled(lvl)
+}
+
+// Run starts the Camel K operator.
+func Run(healthPort, monitoringPort int32, leaderElection bool, leaderElectionID string) {
 	rand.Seed(time.Now().UTC().UnixNano())
 
 	flag.Parse()
@@ -84,18 +100,53 @@ func Run(healthPort, monitoringPort int32, leaderElection bool) {
 	// implementing the logr.Logger interface. This logger will
 	// be propagated through the whole operator, generating
 	// uniform and structured logs.
+
+	// The constants specified here are zap specific
+	var logLevel zapcore.Level
+	logLevelVal, ok := os.LookupEnv("LOG_LEVEL")
+	if ok {
+		switch strings.ToLower(logLevelVal) {
+		case "error":
+			logLevel = zapcore.ErrorLevel
+		case "info":
+			logLevel = zapcore.InfoLevel
+		case "debug":
+			logLevel = zapcore.DebugLevel
+		default:
+			customLevel, err := strconv.Atoi(strings.ToLower(logLevelVal))
+			exitOnError(err, "Invalid log-level")
+			// Need to multiply by -1 to turn logr expected level into zap level
+			logLevel = zapcore.Level(int8(customLevel) * -1)
+		}
+	}
+
+	logLevelEnabler := loglvl{
+		Level: logLevel,
+	}
+
 	logf.SetLogger(zap.New(func(o *zap.Options) {
 		o.Development = false
+		o.Level = logLevelEnabler
 	}))
 
 	klog.SetLogger(log)
+
+	_, err := maxprocs.Set(maxprocs.Logger(func(f string, a ...interface{}) { log.Info(fmt.Sprintf(f, a)) }))
+	exitOnError(err, "failed to set GOMAXPROCS from cgroups")
 
 	printVersion()
 
 	watchNamespace, err := getWatchNamespace()
 	exitOnError(err, "failed to get watch namespace")
 
-	c, err := client.NewClient(false)
+	cfg, err := config.GetConfig()
+	exitOnError(err, "cannot get client config")
+	// Increase maximum burst that is used by client-side throttling,
+	// to prevent the requests made to apply the bundled Kamelets
+	// from being throttled.
+	cfg.QPS = 20
+	cfg.Burst = 200
+	c, err := client.NewClientWithConfig(false, cfg)
 	exitOnError(err, "cannot initialize client")
 
 	// We do not rely on the event broadcaster managed by controller runtime,
@@ -104,7 +155,7 @@ func Run(healthPort, monitoringPort int32, leaderElection bool) {
 	// admin users, that are not granted create permission on Events by default.
 	broadcaster := record.NewBroadcaster()
 	defer broadcaster.Shutdown()
-	// nolint: gocritic
+
 	if ok, err := kubernetes.CheckPermission(context.TODO(), c, corev1.GroupName, "events", watchNamespace, "", "create"); err != nil || !ok {
 		// Do not sink Events to the server as they'll be rejected
 		broadcaster = event.NewSinkLessBroadcaster(broadcaster)
@@ -147,7 +198,7 @@ func Run(healthPort, monitoringPort int32, leaderElection bool) {
 		EventBroadcaster:              broadcaster,
 		LeaderElection:                leaderElection,
 		LeaderElectionNamespace:       operatorNamespace,
-		LeaderElectionID:              platform.OperatorLockName,
+		LeaderElectionID:              leaderElectionID,
 		LeaderElectionResourceLock:    resourcelock.LeasesResourceLock,
 		LeaderElectionReleaseOnCancel: true,
 		HealthProbeBindAddress:        ":" + strconv.Itoa(int(healthPort)),
@@ -180,7 +231,7 @@ func Run(healthPort, monitoringPort int32, leaderElection bool) {
 	exitOnError(controller.AddToManager(mgr), "")
 
 	log.Info("Installing operator resources")
-	installCtx, installCancel := context.WithTimeout(context.TODO(), 1*time.Minute)
+	installCtx, installCancel := context.WithTimeout(context.Background(), 1*time.Minute)
 	defer installCancel()
 	install.OperatorStartupOptionalTools(installCtx, c, watchNamespace, operatorNamespace, log)
 
@@ -188,7 +239,7 @@ func Run(healthPort, monitoringPort int32, leaderElection bool) {
 	exitOnError(mgr.Start(signals.SetupSignalHandler()), "manager exited non-zero")
 }
 
-// getWatchNamespace returns the Namespace the operator should be watching for changes
+// getWatchNamespace returns the Namespace the operator should be watching for changes.
 func getWatchNamespace() (string, error) {
 	ns, found := os.LookupEnv(platform.OperatorWatchNamespaceEnvVariable)
 	if !found {

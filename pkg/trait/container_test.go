@@ -24,7 +24,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -279,7 +278,7 @@ func TestContainerWithCustomImageAndIntegrationKit(t *testing.T) {
 	assert.Contains(t, err.Error(), "unsupported configuration: a container image has been set in conjunction with an IntegrationKit")
 }
 
-func TestContainerWithCustomImageAndDeprecatedIntegrationKit(t *testing.T) {
+func TestContainerWithImagePullPolicy(t *testing.T) {
 	catalog, err := camel.DefaultCatalog()
 	assert.Nil(t, err)
 
@@ -292,61 +291,25 @@ func TestContainerWithCustomImageAndDeprecatedIntegrationKit(t *testing.T) {
 		CamelCatalog: catalog,
 		Catalog:      traitCatalog,
 		Integration: &v1.Integration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      ServiceTestName,
-				Namespace: "ns",
-				UID:       types.UID(uuid.NewString()),
-			},
-			Status: v1.IntegrationStatus{
-				Phase: v1.IntegrationPhaseInitialization,
-			},
 			Spec: v1.IntegrationSpec{
 				Profile: v1.TraitProfileKubernetes,
 				Traits: map[string]v1.TraitSpec{
 					"container": test.TraitSpecFromMap(t, map[string]interface{}{
-						"image": "foo/bar:1.0.0",
+						"imagePullPolicy": "Always",
 					}),
 				},
-				Kit: "bad-" + ServiceTestName,
 			},
 		},
-		Platform: &v1.IntegrationPlatform{
-			Spec: v1.IntegrationPlatformSpec{
-				Cluster: v1.IntegrationPlatformClusterOpenShift,
-				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy: v1.IntegrationPlatformBuildPublishStrategyS2I,
-					Registry:        v1.RegistrySpec{Address: "registry"},
-				},
-			},
-		},
-		EnvVars:        make([]corev1.EnvVar, 0),
-		ExecutedTraits: make([]Trait, 0),
-		Resources:      kubernetes.NewCollection(),
+		Platform:  &v1.IntegrationPlatform{},
+		Resources: kubernetes.NewCollection(),
 	}
+	environment.Integration.Status.Phase = v1.IntegrationPhaseDeploying
 	environment.Platform.ResyncStatusFullConfig()
 
 	err = traitCatalog.apply(&environment)
-	assert.NotNil(t, err)
-	assert.Contains(t, err.Error(), "unsupported configuration: a container image has been set in conjunction with an IntegrationKit")
-}
-
-func TestContainerWithImagePullPolicy(t *testing.T) {
-	target := appsv1.Deployment{}
-
-	env := newTestProbesEnv(t, v1.RuntimeProviderQuarkus)
-	env.Integration.Status.Phase = v1.IntegrationPhaseDeploying
-	env.Resources.Add(&target)
-
-	ctr := newTestContainerTrait()
-	ctr.ImagePullPolicy = "Always"
-
-	err := ctr.Apply(&env)
 	assert.Nil(t, err)
-	assert.Equal(t, corev1.PullAlways, target.Spec.Template.Spec.Containers[0].ImagePullPolicy)
 
-	ctr.ImagePullPolicy = "MustFail"
+	container := environment.GetIntegrationContainer()
 
-	ok, err := ctr.Configure(&env)
-	assert.False(t, ok)
-	assert.NotNil(t, err)
+	assert.Equal(t, corev1.PullAlways, container.ImagePullPolicy)
 }

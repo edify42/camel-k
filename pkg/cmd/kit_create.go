@@ -82,7 +82,7 @@ func (command *kitCreateCommandOptions) validateArgs(_ *cobra.Command, args []st
 	return nil
 }
 
-func (command *kitCreateCommandOptions) run(_ *cobra.Command, args []string) error {
+func (command *kitCreateCommandOptions) run(cmd *cobra.Command, args []string) error {
 	c, err := command.GetCmdClient()
 	if err != nil {
 		return err
@@ -94,7 +94,7 @@ func (command *kitCreateCommandOptions) run(_ *cobra.Command, args []string) err
 		kv := strings.SplitN(t, "=", 2)
 
 		if !util.StringSliceExists(tp, kv[0]) {
-			fmt.Printf("Error: %s is not a valid trait property\n", t)
+			fmt.Fprintln(cmd.OutOrStdout(), "Error:", t, "is not a valid trait property")
 			return nil
 		}
 	}
@@ -109,7 +109,7 @@ func (command *kitCreateCommandOptions) run(_ *cobra.Command, args []string) err
 		// not a platform one which is supposed to be "read only"
 
 		if kit.Labels[v1.IntegrationKitTypeLabel] == v1.IntegrationKitTypePlatform {
-			fmt.Printf("integration kit \"%s\" is not editable\n", kit.Name)
+			fmt.Fprintln(cmd.OutOrStdout(), `integration kit "`+kit.Name+`" is not editable`)
 			return nil
 		}
 	}
@@ -146,28 +146,20 @@ func (command *kitCreateCommandOptions) run(_ *cobra.Command, args []string) err
 		}
 	}
 
-	for _, item := range command.Properties {
-		kit.Spec.Configuration = append(kit.Spec.Configuration, v1.ConfigurationSpec{
-			Type:  "property",
-			Value: item,
-		})
-	}
-	for _, item := range command.Configmaps {
-		kit.Spec.Configuration = append(kit.Spec.Configuration, v1.ConfigurationSpec{
-			Type:  "configmap",
-			Value: item,
-		})
-	}
-	for _, item := range command.Secrets {
-		kit.Spec.Configuration = append(kit.Spec.Configuration, v1.ConfigurationSpec{
-			Type:  "secret",
-			Value: item,
-		})
-	}
-	if err := command.configureTraits(kit, command.Traits, catalog); err != nil {
-		return nil
+	if err := command.parseAndConvertToTrait(command.Properties, "camel.properties"); err != nil {
+		return err
 	}
 
+	if err := command.parseAndConvertToTrait(command.Configmaps, "mount.config"); err != nil {
+		return err
+	}
+
+	if err := command.parseAndConvertToTrait(command.Secrets, "mount.config"); err != nil {
+		return err
+	}
+	if err := command.configureTraits(kit, command.Traits, catalog); err != nil {
+		return err
+	}
 	existed := false
 	err = c.Create(command.Context, kit)
 	if err != nil && k8serrors.IsAlreadyExists(err) {
@@ -175,7 +167,7 @@ func (command *kitCreateCommandOptions) run(_ *cobra.Command, args []string) err
 		existing := v1.NewIntegrationKit(kit.Namespace, kit.Name)
 		err = c.Get(command.Context, key, existing)
 		if err != nil {
-			fmt.Print(err.Error())
+			fmt.Fprint(cmd.ErrOrStderr(), err.Error())
 			return nil
 		}
 		kit.ResourceVersion = existing.ResourceVersion
@@ -183,26 +175,33 @@ func (command *kitCreateCommandOptions) run(_ *cobra.Command, args []string) err
 	}
 
 	if err != nil {
-		fmt.Print(err.Error())
+		fmt.Fprint(cmd.ErrOrStderr(), err.Error())
 		return nil
 	}
 
 	if !existed {
-		fmt.Printf("integration kit \"%s\" created\n", kit.Name)
+		fmt.Fprintln(cmd.OutOrStdout(), `integration kit "`+kit.Name+`" created`)
 	} else {
-		fmt.Printf("integration kit \"%s\" updated\n", kit.Name)
+		fmt.Fprintln(cmd.OutOrStdout(), `integration kit "`+kit.Name+`" updated`)
 	}
 
 	return nil
 }
 
-func (*kitCreateCommandOptions) configureTraits(kit *v1.IntegrationKit, options []string, catalog *trait.Catalog) error {
+func (*kitCreateCommandOptions) configureTraits(kit *v1.IntegrationKit, options []string, catalog trait.Finder) error {
 	traits, err := configureTraits(options, catalog)
 	if err != nil {
 		return err
 	}
 
 	kit.Spec.Traits = traits
+
+	return nil
+}
+func (command *kitCreateCommandOptions) parseAndConvertToTrait(params []string, traitParam string) error {
+	for _, param := range params {
+		command.Traits = append(command.Traits, convertToTrait(param, traitParam))
+	}
 
 	return nil
 }

@@ -27,7 +27,10 @@ import (
 
 const cmdBind = "bind"
 
+// nolint: unparam
 func initializeBindCmdOptions(t *testing.T) (*bindCmdOptions, *cobra.Command, RootCmdOptions) {
+	t.Helper()
+
 	options, rootCmd := kamelTestPreAddCommandInit()
 	bindCmdOptions := addTestBindCmd(*options, rootCmd)
 	kamelTestPostAddCommandInit(t, rootCmd)
@@ -36,11 +39,8 @@ func initializeBindCmdOptions(t *testing.T) (*bindCmdOptions, *cobra.Command, Ro
 }
 
 func addTestBindCmd(options RootCmdOptions, rootCmd *cobra.Command) *bindCmdOptions {
-	//add a testing version of bind Command
+	// add a testing version of bind Command
 	bindCmd, bindOptions := newCmdBind(&options)
-	bindCmd.PersistentPreRunE = func(c *cobra.Command, args []string) error {
-		return nil
-	}
 	bindCmd.Args = test.ArbitraryArgs
 	rootCmd.AddCommand(bindCmd)
 	return bindOptions
@@ -86,7 +86,7 @@ func TestBindOutputUnknownFormat(t *testing.T) {
 func TestBindErrorHandlerDLCKamelet(t *testing.T) {
 	buildCmdOptions, bindCmd, _ := initializeBindCmdOptions(t)
 	output, err := test.ExecuteCommand(bindCmd, cmdBind, "my:src", "my:dst", "-o", "yaml",
-		"--error-handler", "dlc:my-kamelet", "-p", "error-handler.my-prop=value")
+		"--error-handler", "sink:my-kamelet", "-p", "error-handler.my-prop=value")
 	assert.Equal(t, "yaml", buildCmdOptions.OutputFormat)
 
 	assert.Nil(t, err)
@@ -97,7 +97,7 @@ metadata:
   name: my-to-my
 spec:
   errorHandler:
-    dead-letter-channel:
+    sink:
       endpoint:
         properties:
           my-prop: value
@@ -136,10 +136,10 @@ status: {}
 `, output)
 }
 
-func TestBindErrorHandlerRef(t *testing.T) {
+func TestBindErrorHandlerLog(t *testing.T) {
 	buildCmdOptions, bindCmd, _ := initializeBindCmdOptions(t)
 	output, err := test.ExecuteCommand(bindCmd, cmdBind, "my:src", "my:dst", "-o", "yaml",
-		"--error-handler", "ref:my-registry-reference")
+		"--error-handler", "log")
 	assert.Equal(t, "yaml", buildCmdOptions.OutputFormat)
 
 	assert.Nil(t, err)
@@ -150,7 +150,37 @@ metadata:
   name: my-to-my
 spec:
   errorHandler:
-    ref: my-registry-reference
+    log: null
+  sink:
+    uri: my:dst
+  source:
+    uri: my:src
+status: {}
+`, output)
+}
+
+func TestBindTraits(t *testing.T) {
+	buildCmdOptions, bindCmd, _ := initializeBindCmdOptions(t)
+	output, err := test.ExecuteCommand(bindCmd, cmdBind, "my:src", "my:dst", "-o", "yaml", "-t", "mount.configs=configmap:my-cm", "-c", "my-service-binding")
+	assert.Equal(t, "yaml", buildCmdOptions.OutputFormat)
+
+	assert.Nil(t, err)
+	assert.Equal(t, `apiVersion: camel.apache.org/v1alpha1
+kind: KameletBinding
+metadata:
+  creationTimestamp: null
+  name: my-to-my
+spec:
+  integration:
+    traits:
+      mount:
+        configuration:
+          configs:
+          - configmap:my-cm
+      service-binding:
+        configuration:
+          services:
+          - my-service-binding
   sink:
     uri: my:dst
   source:

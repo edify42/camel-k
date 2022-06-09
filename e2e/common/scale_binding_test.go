@@ -27,29 +27,34 @@ import (
 
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gstruct"
+	"github.com/stretchr/testify/assert"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/restmapper"
-	"k8s.io/client-go/scale"
-
 	. "github.com/apache/camel-k/e2e/support"
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
 	"github.com/apache/camel-k/pkg/apis/camel/v1alpha1"
 	"github.com/apache/camel-k/pkg/client/camel/clientset/versioned"
+	"github.com/apache/camel-k/pkg/util/openshift"
 )
 
 func TestKameletBindingScale(t *testing.T) {
+	ocp, err := openshift.IsOpenShift(TestClient())
+	assert.Nil(t, err)
+	if ocp {
+		t.Skip("TODO: Temporarily disabled as this test is flaky on OpenShift 3")
+		return
+	}
+
 	WithNewTestNamespace(t, func(ns string) {
 		name := "binding"
 		Expect(Kamel("install", "-n", ns, "-w").Execute()).To(Succeed())
 		Expect(Kamel("bind", "timer-source?message=HelloBinding", "log-sink", "-n", ns, "--name", name).Execute()).To(Succeed())
 		Eventually(IntegrationPodPhase(ns, name), TestTimeoutLong).Should(Equal(corev1.PodRunning))
-		Eventually(IntegrationCondition(ns, name, v1.IntegrationConditionReady), TestTimeoutShort).Should(Equal(corev1.ConditionTrue))
-		Eventually(KameletBindingCondition(ns, name, v1alpha1.KameletBindingConditionReady), TestTimeoutShort).Should(Equal(corev1.ConditionTrue))
+		Eventually(IntegrationConditionStatus(ns, name, v1.IntegrationConditionReady), TestTimeoutShort).Should(Equal(corev1.ConditionTrue))
+		Eventually(KameletBindingConditionStatus(ns, name, v1alpha1.KameletBindingConditionReady), TestTimeoutShort).Should(Equal(corev1.ConditionTrue))
 		Eventually(IntegrationLogs(ns, name), TestTimeoutShort).Should(ContainSubstring("HelloBinding"))
 
 		t.Run("Update binding scale spec", func(t *testing.T) {
@@ -64,19 +69,14 @@ func TestKameletBindingScale(t *testing.T) {
 			Eventually(KameletBindingStatusReplicas(ns, name), TestTimeoutShort).
 				Should(gstruct.PointTo(BeNumerically("==", 3)))
 			// Check the readiness condition becomes truthy back
-			Eventually(IntegrationCondition(ns, name, v1.IntegrationConditionReady), TestTimeoutMedium).Should(Equal(corev1.ConditionTrue))
+			Eventually(IntegrationConditionStatus(ns, name, v1.IntegrationConditionReady), TestTimeoutMedium).Should(Equal(corev1.ConditionTrue))
 			// Finally check the readiness condition becomes truthy back on kamelet binding
-			Eventually(KameletBindingCondition(ns, name, v1alpha1.KameletBindingConditionReady), TestTimeoutMedium).Should(Equal(corev1.ConditionTrue))
+			Eventually(KameletBindingConditionStatus(ns, name, v1alpha1.KameletBindingConditionReady), TestTimeoutMedium).Should(Equal(corev1.ConditionTrue))
 		})
 
 		t.Run("Scale kamelet binding with polymorphic client", func(t *testing.T) {
 			RegisterTestingT(t)
-			// Polymorphic scale client
-			groupResources, err := restmapper.GetAPIGroupResources(TestClient().Discovery())
-			Expect(err).To(BeNil())
-			mapper := restmapper.NewDiscoveryRESTMapper(groupResources)
-			resolver := scale.NewDiscoveryScaleKindResolver(TestClient().Discovery())
-			scaleClient, err := scale.NewForConfig(TestClient().GetConfig(), mapper, dynamic.LegacyAPIPathResolverFunc, resolver)
+			scaleClient, err := TestClient().ScalesClient()
 			Expect(err).To(BeNil())
 
 			// Patch the integration scale subresource
@@ -85,7 +85,7 @@ func TestKameletBindingScale(t *testing.T) {
 			Expect(err).To(BeNil())
 
 			// Check the readiness condition is still truthy as down-scaling
-			Expect(KameletBindingCondition(ns, name, v1alpha1.KameletBindingConditionReady)()).To(Equal(corev1.ConditionTrue))
+			Expect(KameletBindingConditionStatus(ns, name, v1alpha1.KameletBindingConditionReady)()).To(Equal(corev1.ConditionTrue))
 			// Check the Integration scale subresource Spec field
 			Eventually(IntegrationSpecReplicas(ns, name), TestTimeoutShort).
 				Should(gstruct.PointTo(BeNumerically("==", 2)))
@@ -112,16 +112,16 @@ func TestKameletBindingScale(t *testing.T) {
 
 			// Setter
 			bindingScale.Spec.Replicas = 1
-			bindingScale, err = camel.CamelV1alpha1().KameletBindings(ns).UpdateScale(TestContext, name, bindingScale, metav1.UpdateOptions{})
+			_, err = camel.CamelV1alpha1().KameletBindings(ns).UpdateScale(TestContext, name, bindingScale, metav1.UpdateOptions{})
 			Expect(err).To(BeNil())
 
 			// Check the readiness condition is still truthy as down-scaling in kamelet binding
-			Expect(KameletBindingCondition(ns, name, v1alpha1.KameletBindingConditionReady)()).To(Equal(corev1.ConditionTrue))
+			Expect(KameletBindingConditionStatus(ns, name, v1alpha1.KameletBindingConditionReady)()).To(Equal(corev1.ConditionTrue))
 			// Check the KameletBinding scale subresource Spec field
 			Eventually(KameletBindingSpecReplicas(ns, name), TestTimeoutShort).
 				Should(gstruct.PointTo(BeNumerically("==", 1)))
 			// Check the readiness condition is still truthy as down-scaling
-			Expect(IntegrationCondition(ns, name, v1.IntegrationConditionReady)()).To(Equal(corev1.ConditionTrue))
+			Expect(IntegrationConditionStatus(ns, name, v1.IntegrationConditionReady)()).To(Equal(corev1.ConditionTrue))
 			// Check the Integration scale subresource Spec field
 			Eventually(IntegrationSpecReplicas(ns, name), TestTimeoutShort).
 				Should(gstruct.PointTo(BeNumerically("==", 1)))

@@ -46,7 +46,7 @@ func newDescribePlatformCmd(rootCmdOptions *RootCmdOptions) (*cobra.Command, *de
 				return err
 			}
 			if err := options.run(cmd, args); err != nil {
-				fmt.Println(err.Error())
+				fmt.Fprintln(cmd.OutOrStderr(), err.Error())
 			}
 
 			return nil
@@ -81,9 +81,9 @@ func (command *describePlatformCommandOptions) run(cmd *cobra.Command, args []st
 
 	if err := c.Get(command.Context, platformKey, &platform); err == nil {
 		if desc, err := command.describeIntegrationPlatform(cmd, platform); err == nil {
-			fmt.Print(desc)
+			fmt.Fprint(cmd.OutOrStdout(), desc)
 		} else {
-			fmt.Println(err)
+			fmt.Fprintln(cmd.ErrOrStderr(), err)
 		}
 	} else {
 		fmt.Fprintf(cmd.OutOrStdout(), "IntegrationPlatform '%s' does not exist.\n", args[0])
@@ -96,12 +96,12 @@ func (command *describePlatformCommandOptions) describeIntegrationPlatform(cmd *
 	return indentedwriter.IndentedString(func(out io.Writer) error {
 		w := indentedwriter.NewWriter(cmd.OutOrStdout())
 		describeObjectMeta(w, platform.ObjectMeta)
-		w.Write(0, "Phase:\t%s\n", platform.Status.Phase)
-		w.Write(0, "Version:\t%s\n", platform.Status.Version)
-		w.Write(0, "Base Image:\t%s\n", platform.GetActualValue(getPlatformBaseImage))
-		w.Write(0, "Runtime Version:\t%s\n", platform.GetActualValue(getPlatformRuntimeVersion))
-		w.Write(0, "Local Repository:\t%s\n", platform.GetActualValue(getPlatformMavenLocalRepository))
-		w.Write(0, "Publish Strategy:\t%s\n", platform.GetActualValue(getPlatformPublishStrategy))
+		w.Writef(0, "Phase:\t%s\n", platform.Status.Phase)
+		w.Writef(0, "Version:\t%s\n", platform.Status.Version)
+		w.Writef(0, "Base Image:\t%s\n", platform.GetActualValue(getPlatformBaseImage))
+		w.Writef(0, "Runtime Version:\t%s\n", platform.GetActualValue(getPlatformRuntimeVersion))
+		w.Writef(0, "Local Repository:\t%s\n", platform.GetActualValue(getPlatformMavenLocalRepository))
+		w.Writef(0, "Publish Strategy:\t%s\n", platform.GetActualValue(getPlatformPublishStrategy))
 
 		return nil
 	})

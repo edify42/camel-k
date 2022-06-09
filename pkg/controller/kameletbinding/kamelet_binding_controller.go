@@ -79,8 +79,14 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		&handler.EnqueueRequestForObject{},
 		platform.FilteringFuncs{
 			UpdateFunc: func(e event.UpdateEvent) bool {
-				oldKameletBinding := e.ObjectOld.(*v1alpha1.KameletBinding)
-				newKameletBinding := e.ObjectNew.(*v1alpha1.KameletBinding)
+				oldKameletBinding, ok := e.ObjectOld.(*v1alpha1.KameletBinding)
+				if !ok {
+					return false
+				}
+				newKameletBinding, ok := e.ObjectNew.(*v1alpha1.KameletBinding)
+				if !ok {
+					return false
+				}
 				// Ignore updates to the kameletBinding status in which case metadata.Generation
 				// does not change, or except when the kameletBinding phase changes as it's used
 				// to transition from one phase to another
@@ -111,7 +117,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 var _ reconcile.Reconciler = &ReconcileKameletBinding{}
 
-// ReconcileKameletBinding reconciles a KameletBinding object
+// ReconcileKameletBinding reconciles a KameletBinding object.
 type ReconcileKameletBinding struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the API server
@@ -186,6 +192,8 @@ func (r *ReconcileKameletBinding) Reconcile(ctx context.Context, request reconci
 			}
 
 			if target != nil {
+				target.Status.ObservedGeneration = instance.Generation
+
 				if err := r.client.Status().Patch(ctx, target, ctrl.MergeFrom(&instance)); err != nil {
 					camelevent.NotifyKameletBindingError(ctx, r.client, r.recorder, &instance, target, err)
 					return reconcile.Result{}, err

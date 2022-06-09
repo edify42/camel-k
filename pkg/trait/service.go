@@ -31,12 +31,12 @@ import (
 //
 // It's enabled by default if the integration depends on a Camel component that can expose a HTTP endpoint.
 //
-// +camel-k:trait=service
+// +camel-k:trait=service.
 type serviceTrait struct {
 	BaseTrait `property:",squash"`
 	// To automatically detect from the code if a Service needs to be created.
 	Auto *bool `property:"auto" json:"auto,omitempty"`
-	// Enable Service to be exposed as NodePort
+	// Enable Service to be exposed as NodePort (default `false`).
 	NodePort *bool `property:"node-port" json:"nodePort,omitempty"`
 }
 
@@ -48,7 +48,7 @@ func newServiceTrait() Trait {
 	}
 }
 
-// IsAllowedInProfile overrides default
+// IsAllowedInProfile overrides default.
 func (t *serviceTrait) IsAllowedInProfile(profile v1.TraitProfile) bool {
 	return profile == v1.TraitProfileKubernetes ||
 		profile == v1.TraitProfileOpenShift
@@ -105,7 +105,7 @@ func (t *serviceTrait) Apply(e *Environment) error {
 	if svc == nil {
 		svc = getServiceFor(e)
 
-		if IsNilOrTrue(t.NodePort) {
+		if IsTrue(t.NodePort) {
 			svc.Spec.Type = corev1.ServiceTypeNodePort
 		}
 	}

@@ -1,5 +1,6 @@
 # Go vendor
 /vendor
+/github.com
 
 # Binary files
 /kamel
@@ -21,6 +22,10 @@
 
 # Bundle directory
 /bundle
+
+# Catalog directory
+/catalog
+catalog.Dockerfile
 
 # IDEs
 .idea

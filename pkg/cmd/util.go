@@ -45,14 +45,14 @@ import (
 const (
 	offlineCommandLabel = "camel.apache.org/cmd.offline"
 
-	// Supported source schemes
+	// Supported source schemes.
 	gistScheme   = "gist"
 	githubScheme = "github"
 	httpScheme   = "http"
 	httpsScheme  = "https"
 )
 
-// DeleteIntegration --
+// DeleteIntegration --.
 func DeleteIntegration(ctx context.Context, c client.Client, name string, namespace string) error {
 	integration := v1.Integration{
 		TypeMeta: metav1.TypeMeta{
@@ -174,15 +174,15 @@ func decode(target interface{}) func(*cobra.Command, []string) error {
 }
 
 func stringToSliceHookFunc(comma rune) mapstructure.DecodeHookFunc {
-	return func(
-		f reflect.Kind,
-		t reflect.Kind,
-		data interface{}) (interface{}, error) {
+	return func(f reflect.Kind, t reflect.Kind, data interface{}) (interface{}, error) {
 		if f != reflect.String || t != reflect.Slice {
 			return data, nil
 		}
 
-		s := data.(string)
+		s, ok := data.(string)
+		if !ok {
+			return []string{}, nil
+		}
 		s = strings.TrimPrefix(s, "[")
 		s = strings.TrimSuffix(s, "]")
 
@@ -217,12 +217,12 @@ func clone(dst interface{}, src interface{}) error {
 
 	data, err := json.Marshal(src)
 	if err != nil {
-		return fmt.Errorf("unable to marshal src: %s", err)
+		return fmt.Errorf("unable to marshal src: %w", err)
 	}
 
 	err = json.Unmarshal(data, dst)
 	if err != nil {
-		return fmt.Errorf("unable to unmarshal into dst: %s", err)
+		return fmt.Errorf("unable to unmarshal into dst: %w", err)
 	}
 	return nil
 }

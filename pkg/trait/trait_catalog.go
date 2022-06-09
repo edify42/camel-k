@@ -30,15 +30,15 @@ import (
 	"github.com/apache/camel-k/pkg/util/log"
 )
 
-// Catalog collects all information about traits in one place
+// Catalog collects all information about traits in one place.
 type Catalog struct {
 	L      log.Logger
 	traits []Trait
 }
 
-// NewCatalog creates a new trait Catalog
+// NewCatalog creates a new trait Catalog.
 func NewCatalog(c client.Client) *Catalog {
-	var traitList = make([]Trait, 0, len(FactoryList))
+	traitList := make([]Trait, 0, len(FactoryList))
 	for _, factory := range FactoryList {
 		traitList = append(traitList, factory())
 	}
@@ -98,6 +98,7 @@ func (c *Catalog) apply(environment *Environment) error {
 	for _, trait := range traits {
 		if environment.Platform == nil && trait.RequiresIntegrationPlatform() {
 			c.L.Debug("Skipping trait because of missing integration platform: %s", trait.ID())
+
 			continue
 		}
 		applicable = true
@@ -107,8 +108,6 @@ func (c *Catalog) apply(environment *Environment) error {
 		}
 
 		if enabled {
-			c.L.Infof("Apply trait: %s", trait.ID())
-
 			err = trait.Apply(environment)
 			if err != nil {
 				return err
@@ -126,6 +125,12 @@ func (c *Catalog) apply(environment *Environment) error {
 		}
 	}
 
+	traitIds := make([]string, 0)
+	for _, trait := range environment.ExecutedTraits {
+		traitIds = append(traitIds, string(trait.ID()))
+	}
+	c.L.Debugf("Applied traits: %s", strings.Join(traitIds, ","))
+
 	if !applicable && environment.Platform == nil {
 		return errors.New("no trait can be executed because of no integration platform found")
 	}
@@ -140,7 +145,7 @@ func (c *Catalog) apply(environment *Environment) error {
 	return nil
 }
 
-// GetTrait returns the trait with the given ID
+// GetTrait returns the trait with the given ID.
 func (c *Catalog) GetTrait(id string) Trait {
 	for _, t := range c.AllTraits() {
 		if t.ID() == ID(id) {
@@ -150,7 +155,7 @@ func (c *Catalog) GetTrait(id string) Trait {
 	return nil
 }
 
-// ComputeTraitsProperties returns all key/value configuration properties that can be used to configure traits
+// ComputeTraitsProperties returns all key/value configuration properties that can be used to configure traits.
 func (c *Catalog) ComputeTraitsProperties() []string {
 	results := make([]string, 0)
 	for _, trait := range c.AllTraits() {
@@ -181,3 +186,9 @@ func (c *Catalog) processFields(fields []*structs.Field, processor func(string))
 		}
 	}
 }
+
+type Finder interface {
+	GetTrait(id string) Trait
+}
+
+var _ Finder = &Catalog{}

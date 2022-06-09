@@ -33,7 +33,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-/// Local Docker file system management functions.
+// Local Docker file system management functions.
 
 func createDockerBaseWorkingDirectory() error {
 	// Create local docker base directory.
@@ -50,9 +50,7 @@ func createDockerBaseWorkingDirectory() error {
 
 func deleteDockerBaseWorkingDirectory() error {
 	// Remove directory used for computing the dependencies.
-	defer os.RemoveAll(docker.BaseWorkingDirectory)
-
-	return nil
+	return os.RemoveAll(docker.BaseWorkingDirectory)
 }
 
 func createDockerWorkingDirectory() error {
@@ -70,9 +68,7 @@ func createDockerWorkingDirectory() error {
 
 func deleteDockerWorkingDirectory() error {
 	// Remove directory used for computing the dependencies.
-	defer os.RemoveAll(docker.IntegrationWorkingDirectory)
-
-	return nil
+	return os.RemoveAll(docker.IntegrationWorkingDirectory)
 }
 
 func setDockerNetworkName(networkName string) {
@@ -82,12 +78,12 @@ func setDockerNetworkName(networkName string) {
 }
 
 func setDockerEnvVars(envVars []string) {
-	if envVars != nil && len(envVars) > 0 {
+	if len(envVars) > 0 {
 		util.CLIEnvVars = envVars
 	}
 }
 
-func createAndBuildBaseImage(ctx context.Context) error {
+func createAndBuildBaseImage(ctx context.Context, stdout, stderr io.Writer) error {
 	// Create the base image Docker file.
 	err := docker.CreateBaseImageDockerFile()
 	if err != nil {
@@ -98,8 +94,12 @@ func createAndBuildBaseImage(ctx context.Context) error {
 	args := docker.BuildBaseImageArgs()
 	cmd := exec.CommandContext(ctx, "docker", args...)
 
+	// Set stdout and stderr.
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+
 	// Output executed command.
-	fmt.Printf("Executing: " + strings.Join(cmd.Args, " ") + "\n")
+	fmt.Fprintln(cmd.Stdout, "Executing:", strings.Join(cmd.Args, " "))
 
 	// Run the command.
 	if err := cmd.Run(); err != nil {
@@ -130,7 +130,7 @@ func createAndBuildIntegrationImage(ctx context.Context, containerRegistry strin
 	}
 
 	// Create the Dockerfile and build the base image.
-	err := createAndBuildBaseImage(ctx)
+	err := createAndBuildBaseImage(ctx, stdout, stderr)
 	if err != nil {
 		return err
 	}
@@ -196,7 +196,7 @@ func createAndBuildIntegrationImage(ctx context.Context, containerRegistry strin
 	cmd.Stdout = stdout
 
 	// Output executed command.
-	fmt.Printf("Executing: " + strings.Join(cmd.Args, " ") + "\n")
+	fmt.Fprintln(cmd.Stdout, "Executing:", strings.Join(cmd.Args, " "))
 
 	// Run the command.
 	if err := cmd.Run(); err != nil {
@@ -209,7 +209,7 @@ func createAndBuildIntegrationImage(ctx context.Context, containerRegistry strin
 func runIntegrationImage(ctx context.Context, image string, stdout, stderr io.Writer) error {
 	// Stop the child process before exiting
 	dockerCtx, cancel := context.WithCancel(ctx)
-	cs := make(chan os.Signal)
+	cs := make(chan os.Signal, 1)
 	signal.Notify(cs, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-cs
@@ -229,7 +229,7 @@ func runIntegrationImage(ctx context.Context, image string, stdout, stderr io.Wr
 	cmd.Stdout = stdout
 
 	// Output executed command.
-	fmt.Printf("Executing: " + strings.Join(cmd.Args, " ") + "\n")
+	fmt.Fprintln(cmd.Stdout, "Executing:", strings.Join(cmd.Args, " "))
 
 	// Run the command.
 	if err := cmd.Run(); err != nil {

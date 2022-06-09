@@ -18,7 +18,6 @@ limitations under the License.
 package maven
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -53,7 +52,7 @@ func (c *Command) Do(ctx context.Context) error {
 	}
 
 	args := make([]string, 0)
-	args = append(args, "--no-transfer-progress", "-Dstyle.color=never")
+	args = append(args, c.context.AdditionalArguments...)
 
 	if c.context.LocalRepository != "" {
 		if _, err := os.Stat(c.context.LocalRepository); err == nil {
@@ -62,16 +61,18 @@ func (c *Command) Do(ctx context.Context) error {
 	}
 
 	settingsPath := path.Join(c.context.Path, "settings.xml")
-	settingsExists, err := util.FileExists(settingsPath)
-	if err != nil {
+	if settingsExists, err := util.FileExists(settingsPath); err != nil {
 		return err
+	} else if settingsExists {
+		args = append(args, "--global-settings", settingsPath)
 	}
 
-	if settingsExists {
+	settingsPath = path.Join(c.context.Path, "user-settings.xml")
+	if settingsExists, err := util.FileExists(settingsPath); err != nil {
+		return err
+	} else if settingsExists {
 		args = append(args, "--settings", settingsPath)
 	}
-
-	args = append(args, c.context.AdditionalArguments...)
 
 	cmd := exec.CommandContext(ctx, mvnCmd, args...)
 	cmd.Dir = c.context.Path
@@ -96,6 +97,7 @@ func (c *Command) Do(ctx context.Context) error {
 				for _, opt := range options {
 					if strings.HasPrefix(opt, key) {
 						exists = true
+
 						break
 					}
 				}
@@ -119,35 +121,7 @@ func (c *Command) Do(ctx context.Context) error {
 
 	Log.WithValues("MAVEN_OPTS", mavenOptions).Infof("executing: %s", strings.Join(cmd.Args, " "))
 
-	stdOut, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil
-	}
-
-	err = cmd.Start()
-
-	if err != nil {
-		return err
-	}
-
-	scanner := bufio.NewScanner(stdOut)
-
-	Log.Debug("About to start parsing the Maven output")
-	for scanner.Scan() {
-		line := scanner.Text()
-		mavenLog, parseError := parseLog(line)
-		if parseError == nil {
-			normalizeLog(mavenLog)
-		} else {
-			// Why we are ignoring the parsing errors here: there are a few scenarios where this would likely occur.
-			// For example, if something outside of Maven outputs something (i.e.: the JDK, a misbehaved plugin,
-			// etc). The build may still have succeeded, though.
-			nonNormalizedLog(line)
-		}
-	}
-	Log.Debug("Finished parsing Maven output")
-
-	return cmd.Wait()
+	return util.RunAndLog(ctx, cmd, mavenLogHandler, mavenLogHandler)
 }
 
 func NewContext(buildDir string) Context {
@@ -161,7 +135,8 @@ func NewContext(buildDir string) Context {
 type Context struct {
 	Path                string
 	ExtraMavenOpts      []string
-	SettingsContent     []byte
+	GlobalSettings      []byte
+	UserSettings        []byte
 	AdditionalArguments []string
 	AdditionalEntries   map[string]interface{}
 	LocalRepository     string
@@ -196,8 +171,14 @@ func generateProjectStructure(context Context, project Project) error {
 		return err
 	}
 
-	if context.SettingsContent != nil {
-		if err := util.WriteFileWithContent(context.Path, "settings.xml", context.SettingsContent); err != nil {
+	if context.GlobalSettings != nil {
+		if err := util.WriteFileWithContent(path.Join(context.Path, "settings.xml"), context.GlobalSettings); err != nil {
+			return err
+		}
+	}
+
+	if context.UserSettings != nil {
+		if err := util.WriteFileWithContent(path.Join(context.Path, "user-settings.xml"), context.UserSettings); err != nil {
 			return err
 		}
 	}
@@ -220,7 +201,7 @@ func generateProjectStructure(context Context, project Project) error {
 		if len(bytes) > 0 {
 			Log.Infof("write entry: %s (%d bytes)", k, len(bytes))
 
-			err = util.WriteFileWithContent(context.Path, k, bytes)
+			err = util.WriteFileWithContent(path.Join(context.Path, k), bytes)
 			if err != nil {
 				return err
 			}

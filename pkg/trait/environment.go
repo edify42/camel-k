@@ -18,6 +18,9 @@ limitations under the License.
 package trait
 
 import (
+	"os"
+
+	"github.com/apache/camel-k/pkg/util/camel"
 	"github.com/apache/camel-k/pkg/util/defaults"
 	"github.com/apache/camel-k/pkg/util/envvar"
 	"github.com/apache/camel-k/pkg/util/property"
@@ -26,12 +29,16 @@ import (
 // The environment trait is used internally to inject standard environment variables in the integration container,
 // such as `NAMESPACE`, `POD_NAME` and others.
 //
-// +camel-k:trait=environment
+// +camel-k:trait=environment.
 type environmentTrait struct {
 	BaseTrait `property:",squash"`
 	// Enables injection of `NAMESPACE` and `POD_NAME` environment variables (default `true`)
 	ContainerMeta *bool `property:"container-meta" json:"containerMeta,omitempty"`
-	// A list of variables to be created on the Pod. Must have KEY=VALUE syntax (ie, MY_VAR="my value").
+	// Propagates the `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` environment variables (default `true`)
+	HTTPProxy *bool `property:"http-proxy" json:"httpProxy,omitempty"`
+	// A list of environment variables to be added to the integration container.
+	// The syntax is KEY=VALUE, e.g., `MY_VAR="my value"`.
+	// These take precedence over the previously defined environment variables.
 	Vars []string `property:"vars" json:"vars,omitempty"`
 }
 
@@ -48,7 +55,7 @@ const (
 	//   pkg/trait/environment.go:41: G101: Potential hardcoded credentials (gosec)
 	//	   envVarMountPathSecrets     = "CAMEL_K_MOUNT_PATH_SECRETS"
 	//
-	// nolint: gosec
+	// #nosec G101
 	envVarMountPathSecrets = "CAMEL_K_MOUNT_PATH_SECRETS"
 )
 
@@ -73,12 +80,24 @@ func (t *environmentTrait) Apply(e *Environment) error {
 		envvar.SetVal(&e.EnvVars, envVarCamelKIntegration, e.Integration.Name)
 	}
 	envvar.SetVal(&e.EnvVars, envVarCamelKRuntimeVersion, e.RuntimeVersion)
-	envvar.SetVal(&e.EnvVars, envVarMountPathConfigMaps, configConfigmapsMountPath)
-	envvar.SetVal(&e.EnvVars, envVarMountPathSecrets, configSecretsMountPath)
+	envvar.SetVal(&e.EnvVars, envVarMountPathConfigMaps, camel.ConfigConfigmapsMountPath)
+	envvar.SetVal(&e.EnvVars, envVarMountPathSecrets, camel.ConfigSecretsMountPath)
 
 	if IsNilOrTrue(t.ContainerMeta) {
 		envvar.SetValFrom(&e.EnvVars, envVarNamespace, "metadata.namespace")
 		envvar.SetValFrom(&e.EnvVars, envVarPodName, "metadata.name")
+	}
+
+	if IsNilOrTrue(t.HTTPProxy) {
+		if HTTPProxy, ok := os.LookupEnv("HTTP_PROXY"); ok {
+			envvar.SetVal(&e.EnvVars, "HTTP_PROXY", HTTPProxy)
+		}
+		if HTTPSProxy, ok := os.LookupEnv("HTTPS_PROXY"); ok {
+			envvar.SetVal(&e.EnvVars, "HTTPS_PROXY", HTTPSProxy)
+		}
+		if noProxy, ok := os.LookupEnv("NO_PROXY"); ok {
+			envvar.SetVal(&e.EnvVars, "NO_PROXY", noProxy)
+		}
 	}
 
 	if t.Vars != nil {
@@ -91,7 +110,7 @@ func (t *environmentTrait) Apply(e *Environment) error {
 	return nil
 }
 
-// IsPlatformTrait overrides base class method
+// IsPlatformTrait overrides base class method.
 func (t *environmentTrait) IsPlatformTrait() bool {
 	return true
 }

@@ -24,5 +24,5 @@ echo "Generating API documentation... done!"
 
 echo "Generating traits documentation..."
 cd $rootdir
-go run ./cmd/util/doc-gen --input-dirs ./pkg/trait --input-dirs ./addons/master --input-dirs ./addons/threescale --input-dirs ./addons/tracing
+go run ./cmd/util/doc-gen --input-dirs github.com/apache/camel-k/pkg/trait --input-dirs github.com/apache/camel-k/addons/keda --input-dirs github.com/apache/camel-k/addons/master --input-dirs github.com/apache/camel-k/addons/threescale --input-dirs github.com/apache/camel-k/addons/tracing
 echo "Generating traits documentation... done!"

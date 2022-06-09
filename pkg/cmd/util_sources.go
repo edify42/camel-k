@@ -20,7 +20,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -28,6 +27,7 @@ import (
 	"strings"
 
 	"github.com/apache/camel-k/pkg/util"
+	"github.com/spf13/cobra"
 
 	"golang.org/x/oauth2"
 
@@ -35,7 +35,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Source ---
+// Source ---.
 type Source struct {
 	Origin   string
 	Location string
@@ -60,8 +60,8 @@ func (s *Source) setContent(content []byte) error {
 	return nil
 }
 
-// ResolveSources ---
-func ResolveSources(ctx context.Context, locations []string, compress bool) ([]Source, error) {
+// ResolveSources ---.
+func ResolveSources(ctx context.Context, locations []string, compress bool, cmd *cobra.Command) ([]Source, error) {
 	sources := make([]Source, 0, len(locations))
 
 	for _, location := range locations {
@@ -91,7 +91,7 @@ func ResolveSources(ctx context.Context, locations []string, compress bool) ([]S
 					ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
 					tc = oauth2.NewClient(ctx, ts)
 
-					fmt.Println("GITHUB_TOKEN env var detected, using it for GitHub APIs authentication")
+					fmt.Fprintln(cmd.OutOrStdout(), "GITHUB_TOKEN env var detected, using it for GitHub APIs authentication")
 				}
 
 				gc := github.NewClient(tc)
@@ -107,7 +107,7 @@ func ResolveSources(ctx context.Context, locations []string, compress bool) ([]S
 				}
 
 				if gistID == "" {
-					return sources, fmt.Errorf("unable to determing gist id from %s", location)
+					return sources, fmt.Errorf("unable to determining gist id from %s", location)
 				}
 
 				gists, _, err := gc.Gists.Get(ctx, gistID)
@@ -141,7 +141,7 @@ func ResolveSources(ctx context.Context, locations []string, compress bool) ([]S
 					Compress: compress,
 				}
 
-				content, err := loadContentGitHub(u)
+				content, err := loadContentGitHub(ctx, u)
 				if err != nil {
 					return sources, err
 				}
@@ -157,7 +157,7 @@ func ResolveSources(ctx context.Context, locations []string, compress bool) ([]S
 					Compress: compress,
 				}
 
-				content, err := loadContentHTTP(u)
+				content, err := loadContentHTTP(ctx, u)
 				if err != nil {
 					return sources, err
 				}
@@ -173,7 +173,7 @@ func ResolveSources(ctx context.Context, locations []string, compress bool) ([]S
 					Compress: compress,
 				}
 
-				content, err := loadContentHTTP(u)
+				content, err := loadContentHTTP(ctx, u)
 				if err != nil {
 					return sources, err
 				}
@@ -182,7 +182,7 @@ func ResolveSources(ctx context.Context, locations []string, compress bool) ([]S
 				}
 				sources = append(sources, answer)
 			default:
-				return sources, fmt.Errorf("Missing file or unsupported scheme in %s", location)
+				return sources, fmt.Errorf("missing file or unsupported scheme in %s", location)
 			}
 		}
 	}
@@ -190,7 +190,7 @@ func ResolveSources(ctx context.Context, locations []string, compress bool) ([]S
 	return sources, nil
 }
 
-// ResolveLocalSource --
+// ResolveLocalSource --.
 func ResolveLocalSource(location string, compress bool) (Source, error) {
 	if _, err := os.Stat(location); err != nil && os.IsNotExist(err) {
 		return Source{}, errors.Wrapf(err, "file %s does not exist", location)
@@ -206,7 +206,7 @@ func ResolveLocalSource(location string, compress bool) (Source, error) {
 		Local:    true,
 	}
 
-	content, err := ioutil.ReadFile(location)
+	content, err := util.ReadFile(location)
 	if err != nil {
 		return Source{}, err
 	}

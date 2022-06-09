@@ -51,9 +51,9 @@ func TestRunGlobalInstall(t *testing.T) {
 		}
 	}
 
-	test := func(operatorNamespace string) {
+	WithGlobalOperatorNamespace(t, func(operatorNamespace string) {
 		Expect(Kamel("install", "-n", operatorNamespace, "--global", "--force").Execute()).To(Succeed())
-
+		Eventually(OperatorPodPhase(operatorNamespace), TestTimeoutMedium).Should(Equal(corev1.PodRunning))
 		t.Run("Global test on namespace with platform", func(t *testing.T) {
 			WithNewTestNamespace(t, func(ns2 string) {
 				// Creating platform
@@ -62,6 +62,7 @@ func TestRunGlobalInstall(t *testing.T) {
 				Expect(Kamel("run", "-n", ns2, "files/Java.java").Execute()).To(Succeed())
 				Eventually(IntegrationPodPhase(ns2, "java"), TestTimeoutMedium).Should(Equal(corev1.PodRunning))
 				Eventually(IntegrationLogs(ns2, "java"), TestTimeoutShort).Should(ContainSubstring("Magicstring!"))
+				Expect(IntegrationConditionMessage(IntegrationCondition(ns2, "java", v1.IntegrationConditionPlatformAvailable)())).To(MatchRegexp(ns2 + "\\/.*"))
 				kit := IntegrationKit(ns2, "java")()
 				Expect(Kamel("delete", "--all", "-n", ns2).Execute()).To(Succeed())
 				Expect(Kits(ns2)()).Should(WithTransform(integrationKitsToNamesTransform(), ContainElement(kit)))
@@ -73,11 +74,18 @@ func TestRunGlobalInstall(t *testing.T) {
 
 		t.Run("Global test on namespace with its own operator", func(t *testing.T) {
 			WithNewTestNamespace(t, func(ns3 string) {
-				Expect(Kamel("install", "-n", ns3, "--olm=false").Execute()).To(Succeed())
-
+				if NoOlmOperatorImage != "" {
+					Expect(Kamel("install", "-n", ns3, "--olm=false", "--operator-image", NoOlmOperatorImage).Execute()).To(Succeed())
+				} else {
+					Expect(Kamel("install", "-n", ns3, "--olm=false").Execute()).To(Succeed())
+				}
+				Eventually(OperatorPodPhase(ns3), TestTimeoutMedium).Should(Equal(corev1.PodRunning))
 				Expect(Kamel("run", "-n", ns3, "files/Java.java").Execute()).To(Succeed())
 				Eventually(IntegrationPodPhase(ns3, "java"), TestTimeoutMedium).Should(Equal(corev1.PodRunning))
 				Eventually(IntegrationLogs(ns3, "java"), TestTimeoutShort).Should(ContainSubstring("Magicstring!"))
+				Expect(IntegrationConditionMessage(IntegrationCondition(ns3, "java", v1.IntegrationConditionPlatformAvailable)())).To(MatchRegexp(ns3 + "\\/.*"))
+				kit := IntegrationKit(ns3, "java")()
+				Expect(Kits(ns3)()).Should(WithTransform(integrationKitsToNamesTransform(), ContainElement(kit)))
 				Expect(Kamel("delete", "--all", "-n", ns3).Execute()).To(Succeed())
 
 				Expect(Lease(ns3, platform.OperatorLockName)()).ShouldNot(BeNil(),
@@ -91,6 +99,7 @@ func TestRunGlobalInstall(t *testing.T) {
 				Expect(Kamel("run", "-n", ns4, "files/Java.java").Execute()).To(Succeed())
 				Eventually(IntegrationPodPhase(ns4, "java"), TestTimeoutMedium).Should(Equal(corev1.PodRunning))
 				Eventually(IntegrationLogs(ns4, "java"), TestTimeoutShort).Should(ContainSubstring("Magicstring!"))
+				Expect(IntegrationConditionMessage(IntegrationCondition(ns4, "java", v1.IntegrationConditionPlatformAvailable)())).To(MatchRegexp(operatorNamespace + "\\/.*"))
 				kit := IntegrationKit(ns4, "java")()
 				Expect(Kamel("delete", "--all", "-n", ns4).Execute()).To(Succeed())
 				Expect(Kits(ns4)()).Should(WithTransform(integrationKitsToNamesTransform(), Not(ContainElement(kit))))
@@ -105,6 +114,7 @@ func TestRunGlobalInstall(t *testing.T) {
 				Expect(Kamel("run", "-n", ns5, "files/Java.java").Execute()).To(Succeed())
 				Eventually(IntegrationPodPhase(ns5, "java"), TestTimeoutMedium).Should(Equal(corev1.PodRunning))
 				Eventually(IntegrationLogs(ns5, "java"), TestTimeoutShort).Should(ContainSubstring("Magicstring!"))
+				Expect(IntegrationConditionMessage(IntegrationCondition(ns5, "java", v1.IntegrationConditionPlatformAvailable)())).To(MatchRegexp(operatorNamespace + "\\/.*"))
 				kit := IntegrationKit(ns5, "java")()
 				Expect(Kamel("delete", "--all", "-n", ns5).Execute()).To(Succeed())
 				Expect(Kits(ns5)()).Should(WithTransform(integrationKitsToNamesTransform(), Not(ContainElement(kit))))
@@ -139,18 +149,7 @@ func TestRunGlobalInstall(t *testing.T) {
 		})
 
 		Expect(Kamel("uninstall", "-n", operatorNamespace, "--skip-crd", "--skip-cluster-roles").Execute()).To(Succeed())
-	}
-
-	ocp, err := openshift.IsOpenShift(TestClient())
-	assert.Nil(t, err)
-	if ocp {
-		// global operators are always installed in the openshift-operators namespace
-		RegisterTestingT(t)
-		test("openshift-operators")
-	} else {
-		// create new namespace for the global operator
-		WithNewTestNamespace(t, test)
-	}
+	})
 }
 
 func integrationKitsToNamesTransform() func([]v1.IntegrationKit) []string {

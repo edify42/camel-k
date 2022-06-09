@@ -24,11 +24,17 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
+
+	"go.uber.org/multierr"
 
 	yaml2 "gopkg.in/yaml.v2"
 
@@ -42,49 +48,49 @@ import (
 // By default, a temporary folder will be used.
 var MavenWorkingDirectory = ""
 
-// DefaultDependenciesDirectoryName --
+// DefaultDependenciesDirectoryName --.
 const DefaultDependenciesDirectoryName = "dependencies"
 
-// DefaultPropertiesDirectoryName --
+// DefaultPropertiesDirectoryName --.
 const DefaultPropertiesDirectoryName = "properties"
 
-// DefaultRoutesDirectoryName --
+// DefaultRoutesDirectoryName --.
 const DefaultRoutesDirectoryName = "routes"
 
-// DefaultWorkingDirectoryName --
+// DefaultWorkingDirectoryName --.
 const DefaultWorkingDirectoryName = "workspace"
 
-// CustomQuarkusDirectoryName --
+// CustomQuarkusDirectoryName --.
 const CustomQuarkusDirectoryName = "quarkus"
 
-// CustomAppDirectoryName --
+// CustomAppDirectoryName --.
 const CustomAppDirectoryName = "app"
 
-// CustomLibDirectoryName --
+// CustomLibDirectoryName --.
 const CustomLibDirectoryName = "lib/main"
 
-// ContainerDependenciesDirectory --
+// ContainerDependenciesDirectory --.
 var ContainerDependenciesDirectory = "/deployments/dependencies"
 
-// ContainerPropertiesDirectory --
+// ContainerPropertiesDirectory --.
 var ContainerPropertiesDirectory = "/etc/camel/conf.d"
 
-// ContainerRoutesDirectory --
+// ContainerRoutesDirectory --.
 var ContainerRoutesDirectory = "/etc/camel/sources"
 
-// ContainerResourcesDirectory --
+// ContainerResourcesDirectory --.
 var ContainerResourcesDirectory = "/etc/camel/resources"
 
-// ContainerQuarkusDirectoryName --
+// ContainerQuarkusDirectoryName --.
 const ContainerQuarkusDirectoryName = "/quarkus"
 
-// ContainerAppDirectoryName --
+// ContainerAppDirectoryName --.
 const ContainerAppDirectoryName = "/app"
 
-// ContainerLibDirectoryName --
+// ContainerLibDirectoryName --.
 const ContainerLibDirectoryName = "/lib/main"
 
-// QuarkusDependenciesBaseDirectory --
+// QuarkusDependenciesBaseDirectory --.
 var QuarkusDependenciesBaseDirectory = "/quarkus-app"
 
 // ListOfLazyEvaluatedEnvVars -- List of unevaluated environment variables.
@@ -133,6 +139,16 @@ func StringSliceExists(slice []string, item string) bool {
 	return false
 }
 
+func StringContainsPrefix(slice []string, prefix string) bool {
+	for i := 0; i < len(slice); i++ {
+		if strings.HasPrefix(slice[i], prefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func StringSliceContainsAnyOf(slice []string, items ...string) bool {
 	for i := 0; i < len(slice); i++ {
 		for j := 0; j < len(items); j++ {
@@ -145,7 +161,7 @@ func StringSliceContainsAnyOf(slice []string, items ...string) bool {
 	return false
 }
 
-// StringSliceUniqueAdd appends the given item if not already present in the slice
+// StringSliceUniqueAdd appends the given item if not already present in the slice.
 func StringSliceUniqueAdd(slice *[]string, item string) bool {
 	if slice == nil {
 		newSlice := make([]string, 0)
@@ -162,7 +178,7 @@ func StringSliceUniqueAdd(slice *[]string, item string) bool {
 	return true
 }
 
-// StringSliceUniqueConcat appends all the items of the "items" slice if they are not already present in the slice
+// StringSliceUniqueConcat appends all the items of the "items" slice if they are not already present in the slice.
 func StringSliceUniqueConcat(slice *[]string, items []string) bool {
 	changed := false
 	for _, item := range items {
@@ -170,6 +186,7 @@ func StringSliceUniqueConcat(slice *[]string, items []string) bool {
 			changed = true
 		}
 	}
+
 	return changed
 }
 
@@ -178,7 +195,36 @@ func SubstringFrom(s string, substr string) string {
 	if index != -1 {
 		return s[index:]
 	}
+
 	return ""
+}
+
+const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+const (
+	letterIdxBits = 6                    // 6 bits to represent a letter index
+	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
+	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting in 63 bits
+)
+
+var randomSource = rand.NewSource(time.Now().UnixNano())
+
+func RandomString(n int) string {
+	sb := strings.Builder{}
+	sb.Grow(n)
+	for i, cache, remain := n-1, randomSource.Int63(), letterIdxMax; i >= 0; {
+		if remain == 0 {
+			cache, remain = randomSource.Int63(), letterIdxMax
+		}
+		if idx := int(cache & letterIdxMask); idx < len(letterBytes) {
+			sb.WriteByte(letterBytes[idx])
+			i--
+		}
+		cache >>= letterIdxBits
+		remain--
+	}
+
+	return sb.String()
 }
 
 func EncodeXML(content interface{}) ([]byte, error) {
@@ -188,74 +234,63 @@ func EncodeXML(content interface{}) ([]byte, error) {
 	e := xml.NewEncoder(w)
 	e.Indent("", "  ")
 
-	err := e.Encode(content)
-	if err != nil {
+	if err := e.Encode(content); err != nil {
 		return []byte{}, err
 	}
 
 	return w.Bytes(), nil
 }
 
-func CopyFile(src, dst string) (int64, error) {
+func CopyFile(src, dst string) (nBytes int64, err error) {
 	stat, err := os.Stat(src)
 	if err != nil {
-		return 0, err
+		return
 	}
 
 	if !stat.Mode().IsRegular() {
-		return 0, fmt.Errorf("%s is not a regular file", src)
+		err = fmt.Errorf("%s is not a regular file", src)
+		return
 	}
 
-	source, err := os.Open(src)
+	source, err := Open(src)
 	if err != nil {
-		return 0, err
+		return
 	}
-	defer source.Close()
 
-	err = os.MkdirAll(path.Dir(dst), 0777)
+	defer func() {
+		err = Close(err, source)
+	}()
+
+	// we need to have group and other to be able to access the directory as the user
+	// in the container may not be the same as the one owning the files
+	//
+	// #nosec G301
+	err = os.MkdirAll(path.Dir(dst), 0o755)
 	if err != nil {
-		return 0, err
+		return
 	}
 
-	destination, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, stat.Mode())
+	destination, err := OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, stat.Mode())
 	if err != nil {
-		return 0, err
+		return
 	}
 
-	defer destination.Close()
-	nBytes, err := io.Copy(destination, source)
-	return nBytes, err
+	defer func() {
+		err = Close(err, destination)
+	}()
+
+	nBytes, err = io.Copy(destination, source)
+
+	return
 }
 
-func WriteFileWithContent(buildDir string, relativePath string, content []byte) error {
-	filePath := path.Join(buildDir, relativePath)
-	fileDir := path.Dir(filePath)
-	// Create dir if not present
-	err := os.MkdirAll(fileDir, 0777)
-	if err != nil {
-		return errors.Wrap(err, "could not create dir for file "+relativePath)
-	}
-	// Create file
-	file, err := os.Create(filePath)
-	if err != nil {
-		return errors.Wrap(err, "could not create file "+relativePath)
-	}
-	defer file.Close()
-
-	_, err = file.Write(content)
-	if err != nil {
-		return errors.Wrap(err, "could not write to file "+relativePath)
-	}
-	return nil
-}
-
-func WriteFileWithBytesMarshallerContent(buildDir string, relativePath string, content BytesMarshaller) error {
+func WriteFileWithBytesMarshallerContent(basePath string, filePath string, content BytesMarshaller) error {
 	data, err := content.MarshalBytes()
 	if err != nil {
 		return err
 	}
 
-	return WriteFileWithContent(buildDir, relativePath, data)
+	return WriteFileWithContent(path.Join(basePath, filePath), data)
 }
 
 func FindAllDistinctStringSubmatch(data string, regexps ...*regexp.Regexp) []string {
@@ -307,18 +342,22 @@ func DirectoryExists(directory string) (bool, error) {
 	return info.IsDir(), nil
 }
 
-func DirectoryEmpty(directory string) (bool, error) {
-	f, err := os.Open(directory)
+func DirectoryEmpty(directory string) (ok bool, err error) {
+	f, err := Open(directory)
 	if err != nil {
-		return false, err
+		return
 	}
-	defer f.Close()
+
+	defer func() {
+		err = Close(err, f)
+	}()
 
 	_, err = f.Readdirnames(1)
-	if err == io.EOF {
-		return true, nil
+	if errors.Is(err, io.EOF) {
+		ok = true
 	}
-	return false, err
+
+	return
 }
 
 func CreateDirectory(directory string) error {
@@ -330,7 +369,8 @@ func CreateDirectory(directory string) error {
 		}
 
 		if !directoryExists {
-			err := os.MkdirAll(directory, 0777)
+			// #nosec G301
+			err := os.MkdirAll(directory, 0o755)
 			if err != nil {
 				return err
 			}
@@ -366,7 +406,7 @@ func SortedStringMapKeys(m map[string]string) []string {
 	return res
 }
 
-// CopyMap clones a map of strings
+// CopyMap clones a map of strings.
 func CopyMap(source map[string]string) map[string]string {
 	if source == nil {
 		return nil
@@ -406,7 +446,7 @@ func JSONToMap(src []byte) (map[string]interface{}, error) {
 	jsondata := map[string]interface{}{}
 	err := json.Unmarshal(src, &jsondata)
 	if err != nil {
-		return nil, fmt.Errorf("error unmarshalling json: %v", err)
+		return nil, fmt.Errorf("error unmarshalling json: %w", err)
 	}
 
 	return jsondata, nil
@@ -415,14 +455,14 @@ func JSONToMap(src []byte) (map[string]interface{}, error) {
 func MapToYAML(src map[string]interface{}) ([]byte, error) {
 	yamldata, err := yaml2.Marshal(&src)
 	if err != nil {
-		return nil, fmt.Errorf("error marshalling to yaml: %v", err)
+		return nil, fmt.Errorf("error marshalling to yaml: %w", err)
 	}
 
 	return yamldata, nil
 }
 
 func WriteToFile(filePath string, fileContents string) error {
-	err := ioutil.WriteFile(filePath, []byte(fileContents), 0777)
+	err := ioutil.WriteFile(filePath, []byte(fileContents), 0o400)
 	if err != nil {
 		return errors.Errorf("error writing file: %v", filePath)
 	}
@@ -432,32 +472,32 @@ func WriteToFile(filePath string, fileContents string) error {
 
 // Local directories:
 
-// GetLocalPropertiesDir -- <mavenWorkingDirectory>/properties
+// GetLocalPropertiesDir -- <mavenWorkingDirectory>/properties.
 func GetLocalPropertiesDir() string {
 	return path.Join(MavenWorkingDirectory, DefaultPropertiesDirectoryName)
 }
 
-// GetLocalDependenciesDir --<mavenWorkingDirectory>/dependencies
+// GetLocalDependenciesDir --<mavenWorkingDirectory>/dependencies.
 func GetLocalDependenciesDir() string {
 	return path.Join(MavenWorkingDirectory, DefaultDependenciesDirectoryName)
 }
 
-// GetLocalRoutesDir -- <mavenWorkingDirectory>/routes
+// GetLocalRoutesDir -- <mavenWorkingDirectory>/routes.
 func GetLocalRoutesDir() string {
 	return path.Join(MavenWorkingDirectory, DefaultRoutesDirectoryName)
 }
 
-// GetLocalQuarkusDir -- <mavenWorkingDirectory>/quarkus
+// GetLocalQuarkusDir -- <mavenWorkingDirectory>/quarkus.
 func GetLocalQuarkusDir() string {
 	return path.Join(MavenWorkingDirectory, CustomQuarkusDirectoryName)
 }
 
-// GetLocalAppDir -- <mavenWorkingDirectory>/app
+// GetLocalAppDir -- <mavenWorkingDirectory>/app.
 func GetLocalAppDir() string {
 	return path.Join(MavenWorkingDirectory, CustomAppDirectoryName)
 }
 
-// GetLocalLibDir -- <mavenWorkingDirectory>/lib/main
+// GetLocalLibDir -- <mavenWorkingDirectory>/lib/main.
 func GetLocalLibDir() string {
 	return path.Join(MavenWorkingDirectory, CustomLibDirectoryName)
 }
@@ -474,7 +514,7 @@ func CreateLocalPropertiesDirectory() error {
 	}
 
 	if !directoryExists {
-		err := os.MkdirAll(GetLocalPropertiesDir(), 0777)
+		err := os.MkdirAll(GetLocalPropertiesDir(), 0o700)
 		if err != nil {
 			return err
 		}
@@ -494,7 +534,7 @@ func CreateLocalDependenciesDirectory() error {
 	}
 
 	if !directoryExists {
-		err := os.MkdirAll(GetLocalDependenciesDir(), 0777)
+		err := os.MkdirAll(GetLocalDependenciesDir(), 0o700)
 		if err != nil {
 			return err
 		}
@@ -514,7 +554,7 @@ func CreateLocalRoutesDirectory() error {
 	}
 
 	if !directoryExists {
-		err := os.MkdirAll(GetLocalRoutesDir(), 0777)
+		err := os.MkdirAll(GetLocalRoutesDir(), 0o700)
 		if err != nil {
 			return err
 		}
@@ -534,7 +574,7 @@ func CreateLocalQuarkusDirectory() error {
 	}
 
 	if !directoryExists {
-		err := os.MkdirAll(GetLocalQuarkusDir(), 0777)
+		err := os.MkdirAll(GetLocalQuarkusDir(), 0o700)
 		if err != nil {
 			return err
 		}
@@ -554,7 +594,7 @@ func CreateLocalAppDirectory() error {
 	}
 
 	if !directoryExists {
-		err := os.MkdirAll(GetLocalAppDir(), 0777)
+		err := os.MkdirAll(GetLocalAppDir(), 0o700)
 		if err != nil {
 			return err
 		}
@@ -574,7 +614,7 @@ func CreateLocalLibDirectory() error {
 	}
 
 	if !directoryExists {
-		err := os.MkdirAll(GetLocalLibDir(), 0777)
+		err := os.MkdirAll(GetLocalLibDir(), 0o700)
 		if err != nil {
 			return err
 		}
@@ -617,6 +657,7 @@ func EvaluateCLIAndLazyEnvVars() ([]string, error) {
 		for _, setEnvVar := range setEnvVars {
 			if setEnvVar == lazyEnvVar {
 				alreadySet = true
+
 				break
 			}
 		}
@@ -641,7 +682,7 @@ func CopyIntegrationFilesToDirectory(files []string, directory string) ([]string
 	}
 
 	// Copy files to new location. Also create the list with relocated files.
-	relocatedFilesList := make([]string, len(files))
+	relocatedFilesList := []string{}
 	for _, filePath := range files {
 		newFilePath := path.Join(directory, path.Base(filePath))
 		_, err := CopyFile(filePath, newFilePath)
@@ -663,6 +704,9 @@ func CopyQuarkusAppFiles(localDependenciesDirectory string, localQuarkusDir stri
 
 	// Transfer all files with a .dat extension and all files with a *-bytecode.jar suffix.
 	files, err := getRegularFileNamesInDir(localDependenciesDirectory)
+	if err != nil {
+		return err
+	}
 	for _, file := range files {
 		if strings.HasSuffix(file, ".dat") || strings.HasSuffix(file, "-bytecode.jar") {
 			source := path.Join(localDependenciesDirectory, file)
@@ -744,4 +788,176 @@ func CopyAppFile(localDependenciesDirectory string, localAppDirectory string) er
 	}
 
 	return nil
+}
+
+// Open a safe wrapper of os.Open.
+func Open(name string) (*os.File, error) {
+	return os.Open(filepath.Clean(name))
+}
+
+// OpenFile a safe wrapper of os.OpenFile.
+func OpenFile(name string, flag int, perm os.FileMode) (*os.File, error) {
+	// #nosec G304
+	return os.OpenFile(filepath.Clean(name), flag, perm)
+}
+
+// ReadFile a safe wrapper of os.ReadFile.
+func ReadFile(filename string) ([]byte, error) {
+	return os.ReadFile(filepath.Clean(filename))
+}
+
+func Close(err error, closer io.Closer) error {
+	return multierr.Append(err, closer.Close())
+}
+
+// CloseQuietly unconditionally close an io.Closer
+// It should not be used to replace the Close statement(s).
+func CloseQuietly(closer io.Closer) {
+	_ = closer.Close()
+}
+
+// WithFile a safe wrapper to process a file.
+func WithFile(name string, flag int, perm os.FileMode, consumer func(file *os.File) error) error {
+	// #nosec G304
+	file, err := os.OpenFile(filepath.Clean(name), flag, perm)
+	if err == nil {
+		err = consumer(file)
+	}
+
+	return Close(err, file)
+}
+
+// WithFileReader a safe wrapper to process a file.
+func WithFileReader(name string, consumer func(reader io.Reader) error) error {
+	// #nosec G304
+	file, err := os.Open(filepath.Clean(name))
+	if err == nil {
+		err = consumer(file)
+	}
+
+	return Close(err, file)
+}
+
+// WithFileContent a safe wrapper to process a file content.
+func WithFileContent(name string, consumer func(file *os.File, data []byte) error) error {
+	return WithFile(name, os.O_RDWR|os.O_CREATE, 0o644, func(file *os.File) error {
+		content, err := ReadFile(name)
+		if err != nil {
+			return err
+		}
+
+		return consumer(file, content)
+	})
+}
+
+// WriteFileWithContent a safe wrapper to write content to a file.
+func WriteFileWithContent(filePath string, content []byte) error {
+	fileDir := path.Dir(filePath)
+
+	// Create dir if not present
+	err := os.MkdirAll(fileDir, 0o700)
+	if err != nil {
+		return errors.Wrap(err, "could not create dir for file "+filePath)
+	}
+
+	// Create file
+	file, err := os.Create(filePath)
+	if err != nil {
+		return errors.Wrap(err, "could not create file "+filePath)
+	}
+
+	_, err = file.Write(content)
+	if err != nil {
+		err = errors.Wrap(err, "could not write to file "+filePath)
+	}
+
+	return Close(err, file)
+}
+
+// WithTempDir a safe wrapper to deal with temporary directories.
+func WithTempDir(pattern string, consumer func(string) error) error {
+	tmpDir, err := ioutil.TempDir("", pattern)
+	if err != nil {
+		return err
+	}
+
+	consumerErr := consumer(tmpDir)
+	removeErr := os.RemoveAll(tmpDir)
+
+	return multierr.Append(consumerErr, removeErr)
+}
+
+// Parses a property spec and returns its parts.
+func ConfigTreePropertySplit(property string) []string {
+	var res = make([]string, 0)
+	initialParts := strings.Split(property, ".")
+	for _, p := range initialParts {
+		cur := p
+		var tmp []string
+		for strings.Contains(cur[1:], "[") && strings.HasSuffix(cur, "]") {
+			pos := strings.LastIndex(cur, "[")
+			tmp = append(tmp, cur[pos:])
+			cur = cur[0:pos]
+		}
+		if len(cur) > 0 {
+			tmp = append(tmp, cur)
+		}
+		for i := len(tmp) - 1; i >= 0; i-- {
+			res = append(res, tmp[i])
+		}
+	}
+	return res
+}
+
+// NavigateConfigTree switch to the element in the tree represented by the "nodes" spec and creates intermediary
+// nodes if missing. Nodes specs starting with "[" and ending in "]" are treated as slice indexes.
+func NavigateConfigTree(current interface{}, nodes []string) (interface{}, error) {
+	if len(nodes) == 0 {
+		return current, nil
+	}
+	isSlice := func(idx int) bool {
+		if idx >= len(nodes) {
+			return false
+		}
+		return strings.HasPrefix(nodes[idx], "[") && strings.HasSuffix(nodes[idx], "]")
+	}
+	makeNext := func() interface{} {
+		if isSlice(1) {
+			slice := make([]interface{}, 0)
+			return &slice
+		}
+		return make(map[string]interface{})
+	}
+	switch c := current.(type) {
+	case map[string]interface{}:
+		var next interface{}
+		if n, ok := c[nodes[0]]; ok {
+			next = n
+		} else {
+			next = makeNext()
+			c[nodes[0]] = next
+		}
+		return NavigateConfigTree(next, nodes[1:])
+	case *[]interface{}:
+		if !isSlice(0) {
+			return nil, fmt.Errorf("attempting to set map value %q into a slice", nodes[0])
+		}
+		pos, err := strconv.Atoi(nodes[0][1 : len(nodes[0])-1])
+		if err != nil {
+			return nil, errors.Wrapf(err, "value %q inside brackets is not numeric", nodes[0])
+		}
+		var next interface{}
+		if len(*c) > pos && (*c)[pos] != nil {
+			next = (*c)[pos]
+		} else {
+			next = makeNext()
+			for len(*c) <= pos {
+				*c = append(*c, nil)
+			}
+			(*c)[pos] = next
+		}
+		return NavigateConfigTree(next, nodes[1:])
+	default:
+		return nil, errors.New("invalid node type in configuration")
+	}
 }

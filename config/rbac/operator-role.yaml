@@ -25,9 +25,42 @@ rules:
 - apiGroups:
   - camel.apache.org
   resources:
-  - "*"
+  - builds
+  - camelcatalogs
+  - integrationkits
+  - integrationplatforms
+  - integrations
+  - kameletbindings
+  - kamelets
   verbs:
-  - "*"
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - camel.apache.org
+  resources:
+  - builds
+  verbs:
+  - delete
+- apiGroups:
+  - camel.apache.org
+  resources:
+  - builds/status
+  - camelcatalogs/status
+  - integrationkits/status
+  - integrationplatforms/status
+  - integrations/scale
+  - integrations/status
+  - kameletbindings/status
+  - kameletbindings/scale
+  - kamelets/status
+  verbs:
+  - get
+  - patch
+  - update
 - apiGroups:
   - ""
   resources:
@@ -53,6 +86,12 @@ rules:
   - pods/exec
   verbs:
   - create
+- apiGroups:
+  - ""
+  resources:
+  - pods/proxy
+  verbs:
+  - get
 - apiGroups:
   - policy
   resources:

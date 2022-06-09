@@ -37,12 +37,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/camel-k/pkg/platform"
+	consoleV1 "github.com/openshift/api/console/v1"
+	"github.com/stretchr/testify/assert"
+
 	"github.com/google/uuid"
 	"github.com/onsi/gomega"
+	"github.com/onsi/gomega/format"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
-
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/batch/v1beta1"
 	coordination "k8s.io/api/coordination/v1"
@@ -51,10 +53,13 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/pointer"
 
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
 	eventing "knative.dev/eventing/pkg/apis/eventing/v1"
 	messaging "knative.dev/eventing/pkg/apis/messaging/v1"
@@ -70,6 +75,7 @@ import (
 	"github.com/apache/camel-k/pkg/client"
 	"github.com/apache/camel-k/pkg/cmd"
 	"github.com/apache/camel-k/pkg/install"
+	"github.com/apache/camel-k/pkg/platform"
 	"github.com/apache/camel-k/pkg/util/defaults"
 	"github.com/apache/camel-k/pkg/util/kubernetes"
 	"github.com/apache/camel-k/pkg/util/log"
@@ -85,6 +91,11 @@ const kubeConfigEnvVar = "KUBECONFIG"
 var TestTimeoutShort = 1 * time.Minute
 var TestTimeoutMedium = 5 * time.Minute
 var TestTimeoutLong = 10 * time.Minute
+
+// TestTimeoutVeryLong should be used only for testing native builds.
+var TestTimeoutVeryLong = 30 * time.Minute
+
+var NoOlmOperatorImage string
 
 var TestContext context.Context
 var testClient client.Client
@@ -159,6 +170,14 @@ func init() {
 		}
 	}
 
+	if imageNoOlm, ok := os.LookupEnv("CAMEL_K_TEST_NO_OLM_OPERATOR_IMAGE"); ok {
+		if imageNoOlm != "" {
+			NoOlmOperatorImage = imageNoOlm
+		} else {
+			fmt.Printf("Can't parse CAMEL_K_TEST_NO_OLM_OPERATOR_IMAGE. Using default value from kamel")
+		}
+	}
+
 	if value, ok := os.LookupEnv("CAMEL_K_TEST_TIMEOUT_LONG"); ok {
 		if duration, err = time.ParseDuration(value); err == nil {
 			TestTimeoutLong = duration
@@ -167,7 +186,10 @@ func init() {
 		}
 	}
 
+	// Gomega settings
 	gomega.SetDefaultEventuallyTimeout(TestTimeoutShort)
+	// Disable object truncation on test results
+	format.MaxLength = 0
 
 }
 
@@ -218,7 +240,8 @@ func KamelWithContext(ctx context.Context, args ...string) *cobra.Command {
 			},
 		}
 	} else {
-		c, err = cmd.NewKamelCommand(ctx)
+		// Use modeline CLI as it's closer to the real usage
+		c, args, err = cmd.NewKamelWithModelineCommand(ctx, append([]string{"kamel"}, args...))
 	}
 	if err != nil {
 		panic(err)
@@ -420,15 +443,39 @@ func IntegrationStatusReplicas(ns string, name string) func() *int32 {
 	}
 }
 
-func IntegrationCondition(ns string, name string, conditionType v1.IntegrationConditionType) func() corev1.ConditionStatus {
-	return func() corev1.ConditionStatus {
+func IntegrationCondition(ns string, name string, conditionType v1.IntegrationConditionType) func() *v1.IntegrationCondition {
+	return func() *v1.IntegrationCondition {
 		it := Integration(ns, name)()
 		if it == nil {
-			return "IntegrationMissing"
+			return nil
 		}
 		c := it.Status.GetCondition(conditionType)
 		if c == nil {
-			return "ConditionMissing"
+			return nil
+		}
+		return c
+	}
+}
+
+func IntegrationConditionReason(c *v1.IntegrationCondition) string {
+	if c == nil {
+		return ""
+	}
+	return c.Reason
+}
+
+func IntegrationConditionMessage(c *v1.IntegrationCondition) string {
+	if c == nil {
+		return ""
+	}
+	return c.Message
+}
+
+func IntegrationConditionStatus(ns string, name string, conditionType v1.IntegrationConditionType) func() corev1.ConditionStatus {
+	return func() corev1.ConditionStatus {
+		c := IntegrationCondition(ns, name, conditionType)()
+		if c == nil {
+			return "Unknown"
 		}
 		return c.Status
 	}
@@ -515,6 +562,16 @@ func Service(ns string, name string) func() *corev1.Service {
 	}
 }
 
+func ServiceType(ns string, name string) func() corev1.ServiceType {
+	return func() corev1.ServiceType {
+		svc := Service(ns, name)()
+		if svc == nil {
+			return ""
+		}
+		return svc.Spec.Type
+	}
+}
+
 func Route(ns string, name string) func() *routev1.Route {
 	return func() *routev1.Route {
 		route := routev1.Route{}
@@ -529,6 +586,16 @@ func Route(ns string, name string) func() *routev1.Route {
 			panic(err)
 		}
 		return &route
+	}
+}
+
+func RouteStatus(ns string, name string) func() string {
+	return func() string {
+		route := Route(ns, name)()
+		if route == nil || len(route.Status.Ingress) == 0 {
+			return ""
+		}
+		return string(route.Status.Ingress[0].Conditions[0].Status)
 	}
 }
 
@@ -663,7 +730,7 @@ func PatchIntegration(ns string, name string, mutate func(it *v1.Integration)) e
 	}
 	target := it.DeepCopy()
 	mutate(target)
-	p, err := patch.PositiveMergePatch(it, target)
+	p, err := patch.MergePatch(it, target)
 	if err != nil {
 		return err
 	} else if len(p) == 0 {
@@ -714,7 +781,35 @@ func KameletBindingStatusReplicas(ns string, name string) func() *int32 {
 	}
 }
 
-func KameletBindingCondition(ns string, name string, conditionType v1alpha1.KameletBindingConditionType) func() corev1.ConditionStatus {
+func KameletBindingCondition(ns string, name string, conditionType v1alpha1.KameletBindingConditionType) func() *v1alpha1.KameletBindingCondition {
+	return func() *v1alpha1.KameletBindingCondition {
+		kb := KameletBinding(ns, name)()
+		if kb == nil {
+			return nil
+		}
+		c := kb.Status.GetCondition(conditionType)
+		if c == nil {
+			return nil
+		}
+		return c
+	}
+}
+
+func KameletBindingConditionReason(c *v1alpha1.KameletBindingCondition) string {
+	if c == nil {
+		return ""
+	}
+	return c.Reason
+}
+
+func KameletBindingConditionMessage(c *v1alpha1.KameletBindingCondition) string {
+	if c == nil {
+		return ""
+	}
+	return c.Message
+}
+
+func KameletBindingConditionStatus(ns string, name string, conditionType v1alpha1.KameletBindingConditionType) func() corev1.ConditionStatus {
 	return func() corev1.ConditionStatus {
 		klb := KameletBinding(ns, name)()
 		if klb == nil {
@@ -736,7 +831,7 @@ func UpdateKameletBinding(ns string, name string, upd func(it *v1alpha1.KameletB
 	target := klb.DeepCopy()
 	upd(target)
 	// For some reasons, full patch fails on some clusters
-	p, err := patch.PositiveMergePatch(klb, target)
+	p, err := patch.MergePatch(klb, target)
 	if err != nil {
 		return err
 	} else if len(p) == 0 {
@@ -877,6 +972,26 @@ func Configmap(ns string, name string) func() *corev1.ConfigMap {
 			return nil
 		}
 		return &cm
+	}
+}
+
+func AutogeneratedConfigmapsCount(ns string) func() int {
+	return func() int {
+		lst := corev1.ConfigMapList{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ConfigMap",
+				APIVersion: corev1.SchemeGroupVersion.String(),
+			},
+		}
+		err := TestClient().List(TestContext, &lst,
+			ctrl.InNamespace(ns),
+			ctrl.MatchingLabels{
+				kubernetes.ConfigMapAutogenLabel: "true",
+			})
+		if err != nil {
+			panic(err)
+		}
+		return len(lst.Items)
 	}
 }
 
@@ -1161,6 +1276,18 @@ func CRDs() func() []metav1.APIResource {
 	}
 }
 
+func ConsoleCLIDownload(name string) func() *consoleV1.ConsoleCLIDownload {
+	return func() *consoleV1.ConsoleCLIDownload {
+		cliDownload := consoleV1.ConsoleCLIDownload{}
+		if err := TestClient().Get(TestContext, ctrl.ObjectKey{Name: name}, &cliDownload); err != nil && !k8serrors.IsNotFound(err) {
+			panic(err)
+		} else if err != nil && k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return &cliDownload
+	}
+}
+
 func OperatorPod(ns string) func() *corev1.Pod {
 	return func() *corev1.Pod {
 		lst := corev1.PodList{
@@ -1329,17 +1456,11 @@ func Kamelet(name string, ns string) func() *v1alpha1.Kamelet {
 	}
 }
 
-func KameletHasLabel(name string, ns string, label string) func() bool {
-	return func() bool {
-		k := Kamelet(name, ns)()
-		if k == nil {
-			return false
-		}
-		if _, ok := k.Labels[label]; ok {
-			return true
-		}
-		return false
+func KameletLabels(kamelet *v1alpha1.Kamelet) map[string]string {
+	if kamelet == nil {
+		return map[string]string{}
 	}
+	return kamelet.GetLabels()
 }
 
 func ClusterDomainName() (string, error) {
@@ -1451,7 +1572,7 @@ func CreateKnativeChannel(ns string, name string) func() error {
 	Kamelets
 */
 
-func CreateKamelet(ns string, name string, flow map[string]interface{}, properties map[string]v1alpha1.JSONSchemaProp, labels map[string]string) func() error {
+func CreateKamelet(ns string, name string, template map[string]interface{}, properties map[string]v1alpha1.JSONSchemaProp, labels map[string]string) func() error {
 	return func() error {
 		kamelet := v1alpha1.Kamelet{
 			ObjectMeta: metav1.ObjectMeta{
@@ -1463,7 +1584,7 @@ func CreateKamelet(ns string, name string, flow map[string]interface{}, properti
 				Definition: &v1alpha1.JSONSchemaProps{
 					Properties: properties,
 				},
-				Flow: asFlow(flow),
+				Template: asTemplate(template),
 			},
 		}
 		return TestClient().Create(TestContext, &kamelet)
@@ -1496,13 +1617,14 @@ func CreateTimerKamelet(ns string, name string) func() error {
 	return CreateKamelet(ns, name, flow, props, nil)
 }
 
-func BindKameletTo(ns string, name string, from corev1.ObjectReference, to corev1.ObjectReference, sourceProperties map[string]string, sinkProperties map[string]string) func() error {
-	return BindKameletToWithErrorHandler(ns, name, from, to, sourceProperties, sinkProperties, nil)
+func BindKameletTo(ns string, name string, annotations map[string]string, from corev1.ObjectReference, to corev1.ObjectReference, sourceProperties map[string]string, sinkProperties map[string]string) func() error {
+	return BindKameletToWithErrorHandler(ns, name, annotations, from, to, sourceProperties, sinkProperties, nil)
 }
 
-func BindKameletToWithErrorHandler(ns string, name string, from corev1.ObjectReference, to corev1.ObjectReference, sourceProperties map[string]string, sinkProperties map[string]string, errorHandler map[string]interface{}) func() error {
+func BindKameletToWithErrorHandler(ns string, name string, annotations map[string]string, from corev1.ObjectReference, to corev1.ObjectReference, sourceProperties map[string]string, sinkProperties map[string]string, errorHandler map[string]interface{}) func() error {
 	return func() error {
 		kb := v1alpha1.NewKameletBinding(ns, name)
+		kb.Annotations = annotations
 		kb.Spec = v1alpha1.KameletBindingSpec{
 			Source: v1alpha1.Endpoint{
 				Ref:        &from,
@@ -1520,12 +1642,12 @@ func BindKameletToWithErrorHandler(ns string, name string, from corev1.ObjectRef
 	}
 }
 
-func asFlow(source map[string]interface{}) *v1.Flow {
+func asTemplate(source map[string]interface{}) *v1alpha1.Template {
 	bytes, err := json.Marshal(source)
 	if err != nil {
 		panic(err)
 	}
-	return &v1.Flow{
+	return &v1alpha1.Template{
 		RawMessage: bytes,
 	}
 }
@@ -1585,21 +1707,33 @@ func NumPods(ns string) func() int {
 func WithNewTestNamespace(t *testing.T, doRun func(string)) {
 	ns := NewTestNamespace(false)
 	defer DeleteTestNamespace(t, ns)
-	defer UserCleanup()
+	defer UserCleanup(t)
 
 	InvokeUserTestCode(t, ns.GetName(), doRun)
+}
+
+func WithGlobalOperatorNamespace(t *testing.T, test func(string)) {
+	ocp, err := openshift.IsOpenShift(TestClient())
+	assert.Nil(t, err)
+	if ocp {
+		// global operators are always installed in the openshift-operators namespace
+		InvokeUserTestCode(t, "openshift-operators", test)
+	} else {
+		// create new namespace for the global operator
+		WithNewTestNamespace(t, test)
+	}
 }
 
 func WithNewTestNamespaceWithKnativeBroker(t *testing.T, doRun func(string)) {
 	ns := NewTestNamespace(true)
 	defer DeleteTestNamespace(t, ns)
 	defer DeleteKnativeBroker(ns)
-	defer UserCleanup()
+	defer UserCleanup(t)
 
 	InvokeUserTestCode(t, ns.GetName(), doRun)
 }
 
-func UserCleanup() {
+func UserCleanup(t *testing.T) {
 	userCmd := os.Getenv("KAMEL_TEST_CLEANUP")
 	if userCmd != "" {
 		fmt.Printf("Executing user cleanup command: %s\n", userCmd)
@@ -1608,9 +1742,9 @@ func UserCleanup() {
 		command.Stderr = os.Stderr
 		command.Stdout = os.Stdout
 		if err := command.Run(); err != nil {
-			fmt.Printf("An error occurred during user cleanup command execution: %v\n", err)
+			t.Logf("An error occurred during user cleanup command execution: %v\n", err)
 		} else {
-			fmt.Printf("User cleanup command completed successfully\n")
+			t.Logf("User cleanup command completed successfully\n")
 		}
 	}
 }
@@ -1663,6 +1797,12 @@ func DeleteKnativeBroker(ns metav1.Object) {
 }
 
 func DeleteTestNamespace(t *testing.T, ns ctrl.Object) {
+	value, saveNS := os.LookupEnv("CAMEL_K_TEST_SAVE_FAILED_TEST_NAMESPACE")
+	if t.Failed() && saveNS && value == "true" {
+		t.Logf("Warning: retaining failed test project %q", ns.GetName())
+		return
+	}
+
 	var oc bool
 	var err error
 	if oc, err = openshift.IsOpenShift(TestClient()); err != nil {
@@ -1698,17 +1838,20 @@ func DeleteTestNamespace(t *testing.T, ns ctrl.Object) {
 }
 
 func NewTestNamespace(injectKnativeBroker bool) ctrl.Object {
-	var err error
-	var oc bool
-	var obj ctrl.Object
-
 	brokerLabel := "eventing.knative.dev/injection"
 	name := "test-" + uuid.New().String()
+	c := TestClient()
 
-	if oc, err = openshift.IsOpenShift(TestClient()); err != nil {
+	if oc, err := openshift.IsOpenShift(TestClient()); err != nil {
 		panic(err)
 	} else if oc {
-		obj = &projectv1.ProjectRequest{
+		rest, err := apiutil.RESTClientForGVK(
+			schema.GroupVersionKind{Group: projectv1.GroupName, Version: projectv1.GroupVersion.Version}, false,
+			c.GetConfig(), serializer.NewCodecFactory(c.GetScheme()))
+		if err != nil {
+			panic(err)
+		}
+		request := &projectv1.ProjectRequest{
 			TypeMeta: metav1.TypeMeta{
 				APIVersion: projectv1.GroupVersion.String(),
 				Kind:       "ProjectRequest",
@@ -1717,8 +1860,39 @@ func NewTestNamespace(injectKnativeBroker bool) ctrl.Object {
 				Name: name,
 			},
 		}
+		project := &projectv1.Project{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: projectv1.GroupVersion.String(),
+				Kind:       "Project",
+			},
+		}
+		err = rest.Post().
+			Resource("projectrequests").
+			Body(request).
+			Do(TestContext).
+			Into(project)
+		if err != nil {
+			panic(err)
+		}
+		// workaround https://github.com/openshift/origin/issues/3819
+		if injectKnativeBroker {
+			// use Kubernetes API - https://access.redhat.com/solutions/2677921
+			if namespace, err := TestClient().CoreV1().Namespaces().Get(TestContext, name, metav1.GetOptions{}); err != nil {
+				panic(err)
+			} else {
+				if _, ok := namespace.GetLabels()[brokerLabel]; !ok {
+					namespace.SetLabels(map[string]string{
+						brokerLabel: "enabled",
+					})
+					if err = TestClient().Update(TestContext, namespace); err != nil {
+						panic("Unable to label project with knative-eventing-injection. This operation needs update permission on the project.")
+					}
+				}
+			}
+		}
+		return project
 	} else {
-		obj = &corev1.Namespace{
+		namespace := &corev1.Namespace{
 			TypeMeta: metav1.TypeMeta{
 				APIVersion: "v1",
 				Kind:       "Namespace",
@@ -1727,36 +1901,16 @@ func NewTestNamespace(injectKnativeBroker bool) ctrl.Object {
 				Name: name,
 			},
 		}
-	}
-
-	if injectKnativeBroker {
-		mo := obj.(metav1.Object)
-		mo.SetLabels(map[string]string{
-			brokerLabel: "enabled",
-		})
-	}
-
-	if err = TestClient().Create(TestContext, obj); err != nil {
-		panic(err)
-	}
-	// workaround https://github.com/openshift/origin/issues/3819
-	if injectKnativeBroker && oc {
-		// use Kubernetes API - https://access.redhat.com/solutions/2677921
-		var namespace *corev1.Namespace
-		if namespace, err = TestClient().CoreV1().Namespaces().Get(TestContext, name, metav1.GetOptions{}); err != nil {
-			panic(err)
-		} else {
-			if _, ok := namespace.GetLabels()[brokerLabel]; !ok {
-				namespace.SetLabels(map[string]string{
-					brokerLabel: "enabled",
-				})
-				if err = TestClient().Update(TestContext, namespace); err != nil {
-					panic("Unable to label project with knative-eventing-injection. This operation needs update permission on the project.")
-				}
-			}
+		if injectKnativeBroker {
+			namespace.SetLabels(map[string]string{
+				brokerLabel: "enabled",
+			})
 		}
+		if err := TestClient().Create(TestContext, namespace); err != nil {
+			panic(err)
+		}
+		return namespace
 	}
-	return obj
 }
 
 func GetOutputString(command *cobra.Command) string {

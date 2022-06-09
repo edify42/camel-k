@@ -25,11 +25,12 @@ import (
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
 	"github.com/apache/camel-k/pkg/apis/camel/v1alpha1"
+	"github.com/apache/camel-k/pkg/util"
 )
 
 // The error-handler is a platform trait used to inject Error Handler source into the integration runtime.
 //
-// +camel-k:trait=error-handler
+// +camel-k:trait=error-handler.
 type errorHandlerTrait struct {
 	BaseTrait `property:",squash"`
 	// The error handler ref name provided or found in application properties
@@ -43,7 +44,7 @@ func newErrorHandlerTrait() Trait {
 	}
 }
 
-// IsPlatformTrait overrides base class method
+// IsPlatformTrait overrides base class method.
 func (t *errorHandlerTrait) IsPlatformTrait() bool {
 	return true
 }
@@ -82,10 +83,10 @@ func (t *errorHandlerTrait) Apply(e *Environment) error {
 func (t *errorHandlerTrait) addErrorHandlerDependencies(e *Environment, uri string) {
 	candidateComp, scheme := e.CamelCatalog.DecodeComponent(uri)
 	if candidateComp != nil {
-		e.Integration.Spec.AddDependency(candidateComp.GetDependencyID())
+		util.StringSliceUniqueAdd(&e.Integration.Status.Dependencies, candidateComp.GetDependencyID())
 		if scheme != nil {
 			for _, dep := range candidateComp.GetProducerDependencyIDs(scheme.ID) {
-				e.Integration.Spec.AddDependency(dep)
+				util.StringSliceUniqueAdd(&e.Integration.Status.Dependencies, dep)
 			}
 		}
 	}

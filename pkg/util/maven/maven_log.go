@@ -23,6 +23,7 @@ import (
 	"github.com/apache/camel-k/pkg/util/log"
 )
 
+// nolint: stylecheck
 type mavenLog struct {
 	Level            string `json:"level"`
 	Ts               string `json:"ts"`
@@ -46,10 +47,21 @@ const (
 
 var mavenLogger = log.WithName("maven.build")
 
-func parseLog(line string) (mavenLog mavenLog, error error) {
-	error = json.Unmarshal([]byte(line), &mavenLog)
+func mavenLogHandler(s string) {
+	mavenLog, parseError := parseLog(s)
+	if parseError == nil {
+		normalizeLog(mavenLog)
+	} else {
+		// Why we are ignoring the parsing errors here: there are a few scenarios where this would likely occur.
+		// For example, if something outside of Maven outputs something (i.e.: the JDK, a misbehaved plugin,
+		// etc). The build may still have succeeded, though.
+		nonNormalizedLog(s)
+	}
+}
 
-	return mavenLog, error
+func parseLog(line string) (l mavenLog, err error) {
+	err = json.Unmarshal([]byte(line), &l)
+	return
 }
 
 func normalizeLog(mavenLog mavenLog) {

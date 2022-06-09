@@ -151,8 +151,10 @@ func GenerateQuarkusProjectCommon(camelQuarkusVersion string, runtimeVersion str
 
 func buildQuarkusRunner(ctx *builderContext) error {
 	mc := maven.NewContext(path.Join(ctx.Path, "maven"))
-	mc.SettingsContent = ctx.Maven.SettingsData
+	mc.GlobalSettings = ctx.Maven.GlobalSettings
+	mc.UserSettings = ctx.Maven.UserSettings
 	mc.LocalRepository = ctx.Build.Maven.LocalRepository
+	mc.AdditionalArguments = ctx.Build.Maven.CLIOptions
 
 	if ctx.Maven.TrustStoreName != "" {
 		mc.ExtraMavenOpts = append(mc.ExtraMavenOpts,
@@ -196,8 +198,10 @@ func BuildQuarkusRunnerCommon(ctx context.Context, mc maven.Context, project mav
 
 func computeQuarkusDependencies(ctx *builderContext) error {
 	mc := maven.NewContext(path.Join(ctx.Path, "maven"))
-	mc.SettingsContent = ctx.Maven.SettingsData
+	mc.GlobalSettings = ctx.Maven.GlobalSettings
+	mc.UserSettings = ctx.Maven.UserSettings
 	mc.LocalRepository = ctx.Build.Maven.LocalRepository
+	mc.AdditionalArguments = ctx.Build.Maven.CLIOptions
 
 	// Process artifacts list and add it to existing artifacts
 	artifacts, err := ProcessQuarkusTransitiveDependencies(mc)

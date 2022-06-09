@@ -24,7 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// CLIPrinter is delegated to print the runtime object
+// CLIPrinter is delegated to print the runtime object.
 type CLIPrinter struct {
 	// It accepts either yaml or json format
 	Format string
@@ -45,6 +45,6 @@ func (p *CLIPrinter) PrintObj(obj runtime.Object, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(output, string(data))
+	fmt.Fprint(output, string(data))
 	return nil
 }

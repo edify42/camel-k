@@ -90,6 +90,20 @@ BuildSpec
 </em>
 </td>
 <td>
+<p>The sequence of Build tasks to be performed as part of the Build execution.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>strategy</code><br/>
+<em>
+<a href="#camel.apache.org/v1.BuildStrategy">
+BuildStrategy
+</a>
+</em>
+</td>
+<td>
+<p>The strategy that should be used to perform the Build.</p>
 </td>
 </tr>
 <tr>
@@ -336,17 +350,9 @@ int32
 </em>
 </td>
 <td>
-</td>
-</tr>
-<tr>
-<td>
-<code>kit</code><br/>
-<em>
-string
-</em>
-</td>
-<td>
-<p>Deprecated: use the IntegrationKit field</p>
+<p>Deprecated:
+Use container trait (container.resources) to manage resources
+Use openapi trait (openapi.configmaps) to manage OpenAPIs specifications</p>
 </td>
 </tr>
 <tr>
@@ -417,6 +423,11 @@ PodSpecTemplate
 </em>
 </td>
 <td>
+<p>Deprecated:
+Use camel trait (camel.properties) to manage properties
+Use container trait (container.configs) to manage configs
+Use container trait (container.resources) to manage resources
+Use container trait (container.volumes) to manage volumes</p>
 </td>
 </tr>
 <tr>
@@ -935,7 +946,7 @@ string
 </em>
 </td>
 <td>
-<p>A human readable message indicating details about the transition.</p>
+<p>A human-readable message indicating details about the transition.</p>
 </td>
 </tr>
 </tbody>
@@ -985,6 +996,20 @@ string
 </em>
 </td>
 <td>
+<p>The sequence of Build tasks to be performed as part of the Build execution.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>strategy</code><br/>
+<em>
+<a href="#camel.apache.org/v1.BuildStrategy">
+BuildStrategy
+</a>
+</em>
+</td>
+<td>
+<p>The strategy that should be used to perform the Build.</p>
 </td>
 </tr>
 <tr>
@@ -1112,16 +1137,6 @@ Kubernetes meta/v1.Time
 </tr>
 <tr>
 <td>
-<code>platform</code><br/>
-<em>
-string
-</em>
-</td>
-<td>
-</td>
-</tr>
-<tr>
-<td>
 <code>conditions</code><br/>
 <em>
 <a href="#camel.apache.org/v1.BuildCondition">
@@ -1146,6 +1161,16 @@ string
 </tr>
 </tbody>
 </table>
+<h3 id="camel.apache.org/v1.BuildStrategy">BuildStrategy
+(<code>string</code> alias)</h3>
+<p>
+(<em>Appears on:</em>
+<a href="#camel.apache.org/v1.BuildSpec">BuildSpec</a>, 
+<a href="#camel.apache.org/v1.IntegrationPlatformBuildSpec">IntegrationPlatformBuildSpec</a>)
+</p>
+<div>
+<p>BuildStrategy specifies how the Build should be executed</p>
+</div>
 <h3 id="camel.apache.org/v1.BuildahTask">BuildahTask
 </h3>
 <p>
@@ -1198,16 +1223,6 @@ PublishTask
 <code>verbose</code><br/>
 <em>
 bool
-</em>
-</td>
-<td>
-</td>
-</tr>
-<tr>
-<td>
-<code>httpProxySecret</code><br/>
-<em>
-string
 </em>
 </td>
 <td>
@@ -1317,8 +1332,8 @@ RuntimeSpec
 <td>
 <code>maven</code><br/>
 <em>
-<a href="#camel.apache.org/v1.MavenSpec">
-MavenSpec
+<a href="#camel.apache.org/v1.MavenBuildSpec">
+MavenBuildSpec
 </a>
 </em>
 </td>
@@ -2063,8 +2078,7 @@ Kubernetes meta/v1.Time
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#camel.apache.org/v1.IntegrationSpec">IntegrationSpec</a>, 
-<a href="#camel.apache.org/v1alpha1.KameletSpec">KameletSpec</a>)
+<a href="#camel.apache.org/v1.IntegrationSpec">IntegrationSpec</a>)
 </p>
 <div>
 <p>Flow is an unstructured object representing a Camel Flow in YAML/JSON DSL</p>
@@ -2195,7 +2209,7 @@ string
 </em>
 </td>
 <td>
-<p>A human readable message indicating details about the transition.</p>
+<p>A human-readable message indicating details about the transition.</p>
 </td>
 </tr>
 </tbody>
@@ -2297,7 +2311,7 @@ string
 </em>
 </td>
 <td>
-<p>A human readable message indicating details about the transition.</p>
+<p>A human-readable message indicating details about the transition.</p>
 </td>
 </tr>
 </tbody>
@@ -2583,8 +2597,8 @@ string
 <td>
 <code>buildStrategy</code><br/>
 <em>
-<a href="#camel.apache.org/v1.IntegrationPlatformBuildStrategy">
-IntegrationPlatformBuildStrategy
+<a href="#camel.apache.org/v1.BuildStrategy">
+BuildStrategy
 </a>
 </em>
 </td>
@@ -2639,8 +2653,8 @@ string
 <td>
 <code>registry</code><br/>
 <em>
-<a href="#camel.apache.org/v1.IntegrationPlatformRegistrySpec">
-IntegrationPlatformRegistrySpec
+<a href="#camel.apache.org/v1.RegistrySpec">
+RegistrySpec
 </a>
 </em>
 </td>
@@ -2683,16 +2697,6 @@ MavenSpec
 </tr>
 <tr>
 <td>
-<code>httpProxySecret</code><br/>
-<em>
-string
-</em>
-</td>
-<td>
-</td>
-</tr>
-<tr>
-<td>
 <code>kanikoBuildCache</code><br/>
 <em>
 bool
@@ -2703,15 +2707,6 @@ bool
 </tr>
 </tbody>
 </table>
-<h3 id="camel.apache.org/v1.IntegrationPlatformBuildStrategy">IntegrationPlatformBuildStrategy
-(<code>string</code> alias)</h3>
-<p>
-(<em>Appears on:</em>
-<a href="#camel.apache.org/v1.IntegrationPlatformBuildSpec">IntegrationPlatformBuildSpec</a>)
-</p>
-<div>
-<p>IntegrationPlatformBuildStrategy enumerates all implemented build strategies</p>
-</div>
 <h3 id="camel.apache.org/v1.IntegrationPlatformCluster">IntegrationPlatformCluster
 (<code>string</code> alias)</h3>
 <p>
@@ -2809,7 +2804,7 @@ string
 </em>
 </td>
 <td>
-<p>A human readable message indicating details about the transition.</p>
+<p>A human-readable message indicating details about the transition.</p>
 </td>
 </tr>
 </tbody>
@@ -2892,76 +2887,6 @@ string
 <div>
 <p>IntegrationPlatformPhase &ndash;</p>
 </div>
-<h3 id="camel.apache.org/v1.IntegrationPlatformRegistrySpec">IntegrationPlatformRegistrySpec
-</h3>
-<p>
-(<em>Appears on:</em>
-<a href="#camel.apache.org/v1.IntegrationPlatformBuildSpec">IntegrationPlatformBuildSpec</a>, 
-<a href="#camel.apache.org/v1.PublishTask">PublishTask</a>)
-</p>
-<div>
-<p>IntegrationPlatformRegistrySpec &ndash;</p>
-</div>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>
-<code>insecure</code><br/>
-<em>
-bool
-</em>
-</td>
-<td>
-</td>
-</tr>
-<tr>
-<td>
-<code>address</code><br/>
-<em>
-string
-</em>
-</td>
-<td>
-</td>
-</tr>
-<tr>
-<td>
-<code>secret</code><br/>
-<em>
-string
-</em>
-</td>
-<td>
-</td>
-</tr>
-<tr>
-<td>
-<code>ca</code><br/>
-<em>
-string
-</em>
-</td>
-<td>
-</td>
-</tr>
-<tr>
-<td>
-<code>organization</code><br/>
-<em>
-string
-</em>
-</td>
-<td>
-</td>
-</tr>
-</tbody>
-</table>
 <h3 id="camel.apache.org/v1.IntegrationPlatformResourcesSpec">IntegrationPlatformResourcesSpec
 </h3>
 <p>
@@ -3141,6 +3066,16 @@ string
 <td>
 </td>
 </tr>
+<tr>
+<td>
+<code>info</code><br/>
+<em>
+map[string]string
+</em>
+</td>
+<td>
+</td>
+</tr>
 </tbody>
 </table>
 <h3 id="camel.apache.org/v1.IntegrationSpec">IntegrationSpec
@@ -3205,17 +3140,9 @@ int32
 </em>
 </td>
 <td>
-</td>
-</tr>
-<tr>
-<td>
-<code>kit</code><br/>
-<em>
-string
-</em>
-</td>
-<td>
-<p>Deprecated: use the IntegrationKit field</p>
+<p>Deprecated:
+Use container trait (container.resources) to manage resources
+Use openapi trait (openapi.configmaps) to manage OpenAPIs specifications</p>
 </td>
 </tr>
 <tr>
@@ -3286,6 +3213,11 @@ PodSpecTemplate
 </em>
 </td>
 <td>
+<p>Deprecated:
+Use camel trait (camel.properties) to manage properties
+Use container trait (container.configs) to manage configs
+Use container trait (container.resources) to manage resources
+Use container trait (container.volumes) to manage volumes</p>
 </td>
 </tr>
 <tr>
@@ -3379,17 +3311,6 @@ TraitProfile
 </em>
 </td>
 <td>
-</td>
-</tr>
-<tr>
-<td>
-<code>kit</code><br/>
-<em>
-string
-</em>
-</td>
-<td>
-<p>Deprecated: use the IntegrationKit field</p>
 </td>
 </tr>
 <tr>
@@ -3598,16 +3519,6 @@ bool
 </tr>
 <tr>
 <td>
-<code>httpProxySecret</code><br/>
-<em>
-string
-</em>
-</td>
-<td>
-</td>
-</tr>
-<tr>
-<td>
 <code>cache</code><br/>
 <em>
 <a href="#camel.apache.org/v1.KanikoTaskCache">
@@ -3679,7 +3590,7 @@ string
 <a href="#camel.apache.org/v1.RuntimeSpec">RuntimeSpec</a>)
 </p>
 <div>
-<p>MavenArtifact &ndash;</p>
+<p>MavenArtifact defines a Maven artifact</p>
 </div>
 <table>
 <thead>
@@ -3721,12 +3632,59 @@ string
 </tr>
 </tbody>
 </table>
+<h3 id="camel.apache.org/v1.MavenBuildSpec">MavenBuildSpec
+</h3>
+<p>
+(<em>Appears on:</em>
+<a href="#camel.apache.org/v1.BuilderTask">BuilderTask</a>)
+</p>
+<div>
+<p>MavenBuildSpec &ndash;</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>MavenSpec</code><br/>
+<em>
+<a href="#camel.apache.org/v1.MavenSpec">
+MavenSpec
+</a>
+</em>
+</td>
+<td>
+<p>
+(Members of <code>MavenSpec</code> are embedded into this type.)
+</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>repositories</code><br/>
+<em>
+<a href="#camel.apache.org/v1.Repository">
+[]Repository
+</a>
+</em>
+</td>
+<td>
+<p>The Maven repositories.</p>
+</td>
+</tr>
+</tbody>
+</table>
 <h3 id="camel.apache.org/v1.MavenSpec">MavenSpec
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#camel.apache.org/v1.BuilderTask">BuilderTask</a>, 
-<a href="#camel.apache.org/v1.IntegrationPlatformBuildSpec">IntegrationPlatformBuildSpec</a>)
+<a href="#camel.apache.org/v1.IntegrationPlatformBuildSpec">IntegrationPlatformBuildSpec</a>, 
+<a href="#camel.apache.org/v1.MavenBuildSpec">MavenBuildSpec</a>)
 </p>
 <div>
 <p>MavenSpec &ndash;</p>
@@ -3795,31 +3753,6 @@ Note that the root CA certificates are also imported into the created keystore.<
 </tr>
 <tr>
 <td>
-<code>timeout</code><br/>
-<em>
-<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.20/#duration-v1-meta">
-Kubernetes meta/v1.Duration
-</a>
-</em>
-</td>
-<td>
-<p>Deprecated: use IntegrationPlatform.Spec.Build.Timeout instead</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>repositories</code><br/>
-<em>
-<a href="#camel.apache.org/v1.Repository">
-[]Repository
-</a>
-</em>
-</td>
-<td>
-</td>
-</tr>
-<tr>
-<td>
 <code>extension</code><br/>
 <em>
 <a href="#camel.apache.org/v1.MavenArtifact">
@@ -3828,16 +3761,25 @@ Kubernetes meta/v1.Duration
 </em>
 </td>
 <td>
-<p>Maven build extensions <a href="https://maven.apache.org/guides/mini/guide-using-extensions.html">https://maven.apache.org/guides/mini/guide-using-extensions.html</a></p>
+<p>The Maven build extensions.
+See <a href="https://maven.apache.org/guides/mini/guide-using-extensions.html">https://maven.apache.org/guides/mini/guide-using-extensions.html</a>.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>cliOptions</code><br/>
+<em>
+[]string
+</em>
+</td>
+<td>
+<p>The CLI options that are appended to the list of arguments for Maven commands,
+e.g., <code>-V,--no-transfer-progress,-Dstyle.color=never</code>.
+See <a href="https://maven.apache.org/ref/3.8.4/maven-embedder/cli.html">https://maven.apache.org/ref/3.8.4/maven-embedder/cli.html</a>.</p>
 </td>
 </tr>
 </tbody>
 </table>
-<h3 id="camel.apache.org/v1.PlatformInjectable">PlatformInjectable
-</h3>
-<div>
-<p>PlatformInjectable &ndash;</p>
-</div>
 <h3 id="camel.apache.org/v1.PodSpec">PodSpec
 </h3>
 <p>
@@ -3966,6 +3908,19 @@ map[string]string
 </em>
 </td>
 <td>
+</td>
+</tr>
+<tr>
+<td>
+<code>securityContext</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.20/#podsecuritycontext-v1-core">
+[]Kubernetes core/v1.PodSecurityContext
+</a>
+</em>
+</td>
+<td>
+PodSecurityContext
 </td>
 </tr>
 </tbody>
@@ -4171,8 +4126,8 @@ string
 <td>
 <code>registry</code><br/>
 <em>
-<a href="#camel.apache.org/v1.IntegrationPlatformRegistrySpec">
-IntegrationPlatformRegistrySpec
+<a href="#camel.apache.org/v1.RegistrySpec">
+RegistrySpec
 </a>
 </em>
 </td>
@@ -4188,7 +4143,6 @@ IntegrationPlatformRegistrySpec
 <a href="#camel.apache.org/v1alpha1.BeanProperties">BeanProperties</a>, 
 <a href="#camel.apache.org/v1alpha1.EndpointProperties">EndpointProperties</a>, 
 <a href="#camel.apache.org/v1alpha1.ErrorHandlerParameters">ErrorHandlerParameters</a>, 
-<a href="#camel.apache.org/v1alpha1.ErrorHandlerRef">ErrorHandlerRef</a>, 
 <a href="#camel.apache.org/v1alpha1.ErrorHandlerSpec">ErrorHandlerSpec</a>, 
 <a href="#camel.apache.org/v1.Flow">Flow</a>, 
 <a href="#camel.apache.org/v1.Template">Template</a>, 
@@ -4199,14 +4153,84 @@ IntegrationPlatformRegistrySpec
 It implements Marshaler and Unmarshaler and can
 be used to delay JSON decoding or precompute a JSON encoding.</p>
 </div>
+<h3 id="camel.apache.org/v1.RegistrySpec">RegistrySpec
+</h3>
+<p>
+(<em>Appears on:</em>
+<a href="#camel.apache.org/v1.IntegrationPlatformBuildSpec">IntegrationPlatformBuildSpec</a>, 
+<a href="#camel.apache.org/v1.PublishTask">PublishTask</a>)
+</p>
+<div>
+<p>RegistrySpec provides the configuration for the container registry</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>insecure</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+</td>
+</tr>
+<tr>
+<td>
+<code>address</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+</td>
+</tr>
+<tr>
+<td>
+<code>secret</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+</td>
+</tr>
+<tr>
+<td>
+<code>ca</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+</td>
+</tr>
+<tr>
+<td>
+<code>organization</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+</td>
+</tr>
+</tbody>
+</table>
 <h3 id="camel.apache.org/v1.Repository">Repository
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#camel.apache.org/v1.MavenSpec">MavenSpec</a>)
+<a href="#camel.apache.org/v1.MavenBuildSpec">MavenBuildSpec</a>)
 </p>
 <div>
-<p>Repository &ndash;</p>
+<p>Repository defines a Maven repository</p>
 </div>
 <table>
 <thead>
@@ -4279,7 +4303,7 @@ RepositoryPolicy
 <a href="#camel.apache.org/v1.Repository">Repository</a>)
 </p>
 <div>
-<p>RepositoryPolicy &ndash;</p>
+<p>RepositoryPolicy defines the policy associated to a Maven repository</p>
 </div>
 <table>
 <thead>
@@ -5041,19 +5065,6 @@ Template
 </tr>
 <tr>
 <td>
-<code>flow</code><br/>
-<em>
-<a href="#camel.apache.org/v1.Flow">
-Flow
-</a>
-</em>
-</td>
-<td>
-<p>Deprecated: use template</p>
-</td>
-</tr>
-<tr>
-<td>
 <code>authorization</code><br/>
 <em>
 <a href="#camel.apache.org/v1alpha1.AuthorizationSpec">
@@ -5264,10 +5275,6 @@ KameletBindingStatus
 </div>
 <h3 id="camel.apache.org/v1alpha1.BeanProperties">BeanProperties
 </h3>
-<p>
-(<em>Appears on:</em>
-<a href="#camel.apache.org/v1alpha1.ErrorHandlerBean">ErrorHandlerBean</a>)
-</p>
 <div>
 <p>BeanProperties represent an unstructured object properties to be set on a bean</p>
 </div>
@@ -5297,7 +5304,7 @@ RawMessage
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#camel.apache.org/v1alpha1.ErrorHandlerDeadLetterChannel">ErrorHandlerDeadLetterChannel</a>, 
+<a href="#camel.apache.org/v1alpha1.ErrorHandlerSink">ErrorHandlerSink</a>, 
 <a href="#camel.apache.org/v1alpha1.KameletBindingSpec">KameletBindingSpec</a>)
 </p>
 <div>
@@ -5406,99 +5413,11 @@ RawMessage
 <div>
 <p>ErrorHandler is a generic interface that represent any type of error handler specification</p>
 </div>
-<h3 id="camel.apache.org/v1alpha1.ErrorHandlerBean">ErrorHandlerBean
-</h3>
-<div>
-<p>ErrorHandlerBean represents a bean error handler type</p>
-</div>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>
-<code>ErrorHandlerNone</code><br/>
-<em>
-<a href="#camel.apache.org/v1alpha1.ErrorHandlerNone">
-ErrorHandlerNone
-</a>
-</em>
-</td>
-<td>
-</td>
-</tr>
-<tr>
-<td>
-<code>type</code><br/>
-<em>
-string
-</em>
-</td>
-<td>
-</td>
-</tr>
-<tr>
-<td>
-<code>properties</code><br/>
-<em>
-<a href="#camel.apache.org/v1alpha1.BeanProperties">
-BeanProperties
-</a>
-</em>
-</td>
-<td>
-</td>
-</tr>
-</tbody>
-</table>
-<h3 id="camel.apache.org/v1alpha1.ErrorHandlerDeadLetterChannel">ErrorHandlerDeadLetterChannel
-</h3>
-<div>
-<p>ErrorHandlerDeadLetterChannel represents a dead letter channel error handler type</p>
-</div>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>
-<code>ErrorHandlerLog</code><br/>
-<em>
-<a href="#camel.apache.org/v1alpha1.ErrorHandlerLog">
-ErrorHandlerLog
-</a>
-</em>
-</td>
-<td>
-</td>
-</tr>
-<tr>
-<td>
-<code>endpoint</code><br/>
-<em>
-<a href="#camel.apache.org/v1alpha1.Endpoint">
-Endpoint
-</a>
-</em>
-</td>
-<td>
-</td>
-</tr>
-</tbody>
-</table>
 <h3 id="camel.apache.org/v1alpha1.ErrorHandlerLog">ErrorHandlerLog
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#camel.apache.org/v1alpha1.ErrorHandlerDeadLetterChannel">ErrorHandlerDeadLetterChannel</a>)
+<a href="#camel.apache.org/v1alpha1.ErrorHandlerSink">ErrorHandlerSink</a>)
 </p>
 <div>
 <p>ErrorHandlerLog represent a default (log) error handler type</p>
@@ -5541,7 +5460,6 @@ ErrorHandlerParameters
 </h3>
 <p>
 (<em>Appears on:</em>
-<a href="#camel.apache.org/v1alpha1.ErrorHandlerBean">ErrorHandlerBean</a>, 
 <a href="#camel.apache.org/v1alpha1.ErrorHandlerLog">ErrorHandlerLog</a>)
 </p>
 <div>
@@ -5588,10 +5506,10 @@ RawMessage
 </tr>
 </tbody>
 </table>
-<h3 id="camel.apache.org/v1alpha1.ErrorHandlerRef">ErrorHandlerRef
+<h3 id="camel.apache.org/v1alpha1.ErrorHandlerSink">ErrorHandlerSink
 </h3>
 <div>
-<p>ErrorHandlerRef represents a reference to an error handler builder available in the registry</p>
+<p>ErrorHandlerSink represents a sink error handler type which behave like a dead letter channel</p>
 </div>
 <table>
 <thead>
@@ -5603,10 +5521,22 @@ RawMessage
 <tbody>
 <tr>
 <td>
-<code>RawMessage</code><br/>
+<code>ErrorHandlerLog</code><br/>
 <em>
-<a href="#camel.apache.org/v1.RawMessage">
-RawMessage
+<a href="#camel.apache.org/v1alpha1.ErrorHandlerLog">
+ErrorHandlerLog
+</a>
+</em>
+</td>
+<td>
+</td>
+</tr>
+<tr>
+<td>
+<code>endpoint</code><br/>
+<em>
+<a href="#camel.apache.org/v1alpha1.Endpoint">
+Endpoint
 </a>
 </em>
 </td>
@@ -6049,7 +5979,7 @@ bool
 </em>
 </td>
 <td>
-<p>The list of descriptors that determine which UI components to use on different views</p>
+<p>XDescriptors is a list of extended properties that trigger a custom behavior in external systems</p>
 </td>
 </tr>
 </tbody>
@@ -6540,7 +6470,7 @@ string
 </em>
 </td>
 <td>
-<p>A human readable message indicating details about the transition.</p>
+<p>A human-readable message indicating details about the transition.</p>
 </td>
 </tr>
 </tbody>
@@ -6650,19 +6580,6 @@ Template
 </em>
 </td>
 <td>
-</td>
-</tr>
-<tr>
-<td>
-<code>flow</code><br/>
-<em>
-<a href="#camel.apache.org/v1.Flow">
-Flow
-</a>
-</em>
-</td>
-<td>
-<p>Deprecated: use template</p>
 </td>
 </tr>
 <tr>

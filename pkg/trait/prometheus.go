@@ -40,7 +40,7 @@ import (
 //
 // The Prometheus trait is disabled by default.
 //
-// +camel-k:trait=prometheus
+// +camel-k:trait=prometheus.
 type prometheusTrait struct {
 	BaseTrait `property:",squash"`
 	// Whether a `PodMonitor` resource is created (default `true`).
@@ -71,7 +71,7 @@ func (t *prometheusTrait) Apply(e *Environment) (err error) {
 		return nil
 	}
 
-	container := e.getIntegrationContainer()
+	container := e.GetIntegrationContainer()
 	if container == nil {
 		e.Integration.Status.SetCondition(
 			v1.IntegrationConditionPrometheusAvailable,

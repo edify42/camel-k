@@ -29,6 +29,7 @@ import (
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
 	"github.com/apache/camel-k/pkg/event"
+	"github.com/apache/camel-k/pkg/util/kubernetes"
 )
 
 func newScheduleAction(reader ctrl.Reader) Action {
@@ -43,17 +44,17 @@ type scheduleAction struct {
 	reader ctrl.Reader
 }
 
-// Name returns a common name of the action
+// Name returns a common name of the action.
 func (action *scheduleAction) Name() string {
 	return "schedule"
 }
 
-// CanHandle tells whether this action can handle the build
+// CanHandle tells whether this action can handle the build.
 func (action *scheduleAction) CanHandle(build *v1.Build) bool {
 	return build.Status.Phase == v1.BuildPhaseScheduling
 }
 
-// Handle handles the builds
+// Handle handles the builds.
 func (action *scheduleAction) Handle(ctx context.Context, build *v1.Build) (*v1.Build, error) {
 	// Enter critical section
 	action.lock.Lock()
@@ -116,8 +117,9 @@ func (action *scheduleAction) toPendingPhase(ctx context.Context, build *v1.Buil
 		return err
 	}
 
+	buildCreator := kubernetes.GetCamelCreator(build)
 	// Report the duration the Build has been waiting in the build queue
-	observeBuildQueueDuration(build)
+	observeBuildQueueDuration(build, buildCreator)
 
 	return nil
 }

@@ -19,7 +19,7 @@ package platform
 
 import (
 	"context"
-	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -34,17 +34,17 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	"github.com/apache/camel-k/pkg/builder"
 	"github.com/apache/camel-k/pkg/client"
 	"github.com/apache/camel-k/pkg/install"
 	"github.com/apache/camel-k/pkg/kamelet/repository"
 	"github.com/apache/camel-k/pkg/util/defaults"
 	"github.com/apache/camel-k/pkg/util/log"
-	"github.com/apache/camel-k/pkg/util/maven"
 	"github.com/apache/camel-k/pkg/util/openshift"
-	"github.com/apache/camel-k/pkg/util/patch"
+	image "github.com/apache/camel-k/pkg/util/registry"
 )
 
-// BuilderServiceAccount --
+// BuilderServiceAccount --.
 const BuilderServiceAccount = "camel-k-builder"
 
 // ConfigureDefaults fills with default values all missing details about the integration platform.
@@ -86,18 +86,18 @@ func ConfigureDefaults(ctx context.Context, c client.Client, p *v1.IntegrationPl
 		}
 	}
 
-	err := setPlatformDefaults(ctx, c, p, verbose)
+	err := setPlatformDefaults(p, verbose)
 	if err != nil {
 		return err
 	}
 
 	if p.Status.Build.BuildStrategy == v1.BuildStrategyPod {
-		if err := createBuilderServiceAccount(ctx, c, p); err != nil {
+		if err := CreateBuilderServiceAccount(ctx, c, p); err != nil {
 			return errors.Wrap(err, "cannot ensure service account is present")
 		}
 	}
 
-	err = configureRegistry(ctx, c, p)
+	err = configureRegistry(ctx, c, p, verbose)
 	if err != nil {
 		return err
 	}
@@ -113,7 +113,22 @@ func ConfigureDefaults(ctx context.Context, c client.Client, p *v1.IntegrationPl
 	return nil
 }
 
-func configureRegistry(ctx context.Context, c client.Client, p *v1.IntegrationPlatform) error {
+func CreateBuilderServiceAccount(ctx context.Context, client client.Client, p *v1.IntegrationPlatform) error {
+	sa := corev1.ServiceAccount{}
+	key := ctrl.ObjectKey{
+		Name:      BuilderServiceAccount,
+		Namespace: p.Namespace,
+	}
+
+	err := client.Get(ctx, key, &sa)
+	if err != nil && k8serrors.IsNotFound(err) {
+		return install.BuilderServiceAccountRoles(ctx, client, p.Namespace, p.Status.Cluster)
+	}
+
+	return err
+}
+
+func configureRegistry(ctx context.Context, c client.Client, p *v1.IntegrationPlatform, verbose bool) error {
 	if p.Status.Cluster == v1.IntegrationPlatformClusterOpenShift &&
 		p.Status.Build.PublishStrategy != v1.IntegrationPlatformBuildPublishStrategyS2I &&
 		p.Status.Build.Registry.Address == "" {
@@ -144,16 +159,28 @@ func configureRegistry(ctx context.Context, c client.Client, p *v1.IntegrationPl
 			for _, secret := range sa.Secrets {
 				if strings.Contains(secret.Name, "camel-k-builder-dockercfg") {
 					p.Status.Build.Registry.Secret = secret.Name
+
 					break
 				}
 			}
 		}
 	}
-
+	if p.Status.Build.Registry.Address == "" {
+		// try KEP-1755
+		address, err := image.GetRegistryAddress(ctx, c)
+		if err != nil && verbose {
+			log.Error(err, "Cannot find a registry where to push images via KEP-1755")
+		} else if err == nil && address != nil {
+			p.Status.Build.Registry.Address = *address
+		}
+	}
 	return nil
 }
 
-func setPlatformDefaults(ctx context.Context, c client.Client, p *v1.IntegrationPlatform, verbose bool) error {
+func setPlatformDefaults(p *v1.IntegrationPlatform, verbose bool) error {
+	if p.Status.Build.PublishStrategyOptions == nil {
+		p.Status.Build.PublishStrategyOptions = map[string]string{}
+	}
 	if p.Status.Build.RuntimeVersion == "" {
 		p.Status.Build.RuntimeVersion = defaults.DefaultRuntimeVersion
 	}
@@ -163,8 +190,15 @@ func setPlatformDefaults(ctx context.Context, c client.Client, p *v1.Integration
 	if p.Status.Build.Maven.LocalRepository == "" {
 		p.Status.Build.Maven.LocalRepository = defaults.LocalRepository
 	}
-	if p.Status.Build.PersistentVolumeClaim == "" {
-		p.Status.Build.PersistentVolumeClaim = p.Name
+	if len(p.Status.Build.Maven.CLIOptions) == 0 {
+		p.Status.Build.Maven.CLIOptions = []string{
+			"-V",
+			"--no-transfer-progress",
+			"-Dstyle.color=never",
+		}
+	}
+	if _, ok := p.Status.Build.PublishStrategyOptions[builder.KanikoPVCName]; !ok {
+		p.Status.Build.PublishStrategyOptions[builder.KanikoPVCName] = p.Name
 	}
 
 	if p.Status.Build.GetTimeout().Duration != 0 {
@@ -183,51 +217,15 @@ func setPlatformDefaults(ctx context.Context, c client.Client, p *v1.Integration
 			Duration: 5 * time.Minute,
 		}
 	}
-
-	if p.Status.Build.Maven.Settings.ConfigMapKeyRef == nil && p.Status.Build.Maven.Settings.SecretKeyRef == nil {
-		var repositories []v1.Repository
-		var mirrors []maven.Mirror
-		for i, c := range p.Status.Configuration {
-			if c.Type == "repository" {
-				if strings.Contains(c.Value, "@mirrorOf=") {
-					mirror := maven.NewMirror(c.Value)
-					if mirror.ID == "" {
-						mirror.ID = fmt.Sprintf("mirror-%03d", i)
-					}
-					mirrors = append(mirrors, mirror)
-				} else {
-					repo := maven.NewRepository(c.Value)
-					if repo.ID == "" {
-						repo.ID = fmt.Sprintf("repository-%03d", i)
-					}
-					repositories = append(repositories, repo)
-				}
-			}
-		}
-
-		settings := maven.NewDefaultSettings(repositories, mirrors)
-
-		err := createDefaultMavenSettingsConfigMap(ctx, c, p, settings)
-		if err != nil {
-			return err
-		}
-
-		p.Status.Build.Maven.Settings.ConfigMapKeyRef = &corev1.ConfigMapKeySelector{
-			LocalObjectReference: corev1.LocalObjectReference{
-				Name: p.Name + "-maven-settings",
-			},
-			Key: "settings.xml",
-		}
-	}
-
-	if p.Status.Build.PublishStrategy == v1.IntegrationPlatformBuildPublishStrategyKaniko && p.Status.Build.KanikoBuildCache == nil {
+	_, cacheEnabled := p.Status.Build.PublishStrategyOptions["KanikoBuildCache"]
+	if p.Status.Build.PublishStrategy == v1.IntegrationPlatformBuildPublishStrategyKaniko && !cacheEnabled {
 		// Default to disabling Kaniko cache warmer
 		// Using the cache warmer pod seems unreliable with the current Kaniko version
 		// and requires relying on a persistent volume.
-		defaultKanikoBuildCache := false
-		p.Status.Build.KanikoBuildCache = &defaultKanikoBuildCache
+		defaultKanikoBuildCache := "false"
+		p.Status.Build.PublishStrategyOptions[builder.KanikoBuildCacheEnabled] = defaultKanikoBuildCache
 		if verbose {
-			log.Log.Infof("Kaniko cache set to %t", *p.Status.Build.KanikoBuildCache)
+			log.Log.Infof("Kaniko cache set to %s", defaultKanikoBuildCache)
 		}
 	}
 
@@ -236,6 +234,7 @@ func setPlatformDefaults(ctx context.Context, c client.Client, p *v1.Integration
 			URI: repository.DefaultRemoteRepository,
 		})
 	}
+	setStatusAdditionalInfo(p)
 
 	if verbose {
 		log.Log.Infof("RuntimeVersion set to %s", p.Status.Build.RuntimeVersion)
@@ -247,39 +246,16 @@ func setPlatformDefaults(ctx context.Context, c client.Client, p *v1.Integration
 	return nil
 }
 
-func createDefaultMavenSettingsConfigMap(ctx context.Context, client client.Client, p *v1.IntegrationPlatform, settings maven.Settings) error {
-	cm, err := maven.SettingsConfigMap(p.Namespace, p.Name, settings)
-	if err != nil {
-		return err
+func setStatusAdditionalInfo(platform *v1.IntegrationPlatform) {
+	platform.Status.Info = make(map[string]string)
+	if platform.Spec.Build.PublishStrategy == v1.IntegrationPlatformBuildPublishStrategyBuildah {
+		platform.Status.Info["buildahVersion"] = defaults.BuildahVersion
+	} else if platform.Spec.Build.PublishStrategy == v1.IntegrationPlatformBuildPublishStrategyKaniko {
+		platform.Status.Info["kanikoVersion"] = defaults.KanikoVersion
 	}
-
-	err = client.Create(ctx, cm)
-	if err != nil && !k8serrors.IsAlreadyExists(err) {
-		return err
-	} else if k8serrors.IsAlreadyExists(err) {
-		existing := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: cm.Namespace,
-				Name:      cm.Name,
-			},
-		}
-		err = client.Get(ctx, ctrl.ObjectKeyFromObject(existing), existing)
-		if err != nil {
-			return err
-		}
-
-		p, err := patch.PositiveMergePatch(existing, cm)
-		if err != nil {
-			return err
-		} else if len(p) != 0 {
-			err = client.Patch(ctx, cm, ctrl.RawPatch(types.MergePatchType, p))
-			if err != nil {
-				return errors.Wrap(err, "error during patch resource")
-			}
-		}
-	}
-
-	return nil
+	platform.Status.Info["goVersion"] = runtime.Version()
+	platform.Status.Info["goOS"] = runtime.GOOS
+	platform.Status.Info["gitCommit"] = defaults.GitCommit
 }
 
 func createServiceCaBundleConfigMap(ctx context.Context, client client.Client, p *v1.IntegrationPlatform) (*corev1.ConfigMap, error) {
@@ -299,21 +275,6 @@ func createServiceCaBundleConfigMap(ctx context.Context, client client.Client, p
 	}
 
 	return cm, nil
-}
-
-func createBuilderServiceAccount(ctx context.Context, client client.Client, p *v1.IntegrationPlatform) error {
-	sa := corev1.ServiceAccount{}
-	key := ctrl.ObjectKey{
-		Name:      BuilderServiceAccount,
-		Namespace: p.Namespace,
-	}
-
-	err := client.Get(ctx, key, &sa)
-	if err != nil && k8serrors.IsNotFound(err) {
-		return install.BuilderServiceAccountRoles(ctx, client, p.Namespace, p.Status.Cluster)
-	}
-
-	return err
 }
 
 func createBuilderRegistryRoleBinding(ctx context.Context, client client.Client, p *v1.IntegrationPlatform) error {

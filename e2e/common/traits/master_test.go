@@ -23,23 +23,36 @@ limitations under the License.
 package traits
 
 import (
+	"os"
 	"testing"
 	"time"
 
 	. "github.com/onsi/gomega"
 
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 
 	. "github.com/apache/camel-k/e2e/support"
 )
 
 func TestMasterTrait(t *testing.T) {
+	/*
+	* TODO
+	* The test just keeps randomly failing, either on kind or OCP4 clusters.
+	* The integration times out before spinning up or tests for the Magicstring
+	* fail.
+	*
+	* Adding CAMEL_K_TEST_SKIP_PROBLEMATIC env var for the moment.
+	 */
+	if os.Getenv("CAMEL_K_TEST_SKIP_PROBLEMATIC") == "true" {
+		t.Skip("WARNING: Test marked as problematic ... skipping")
+	}
+
 	WithNewTestNamespace(t, func(ns string) {
 		Expect(Kamel("install", "-n", ns).Execute()).To(Succeed())
 
 		t.Run("master works", func(t *testing.T) {
 			Expect(Kamel("run", "-n", ns, "files/Master.java").Execute()).To(Succeed())
-			Eventually(IntegrationPodPhase(ns, "master"), TestTimeoutMedium).Should(Equal(v1.PodRunning))
+			Eventually(IntegrationPodPhase(ns, "master"), TestTimeoutMedium).Should(Equal(corev1.PodRunning))
 			Eventually(IntegrationLogs(ns, "master"), TestTimeoutShort).Should(ContainSubstring("Magicstring!"))
 			Expect(Kamel("delete", "--all", "-n", ns).Execute()).To(Succeed())
 		})
@@ -51,7 +64,7 @@ func TestMasterTrait(t *testing.T) {
 				"-t", "master.label-key=leader-group",
 				"-t", "master.label-value=same",
 				"-t", "owner.target-labels=leader-group").Execute()).To(Succeed())
-			Eventually(IntegrationPodPhase(ns, "first"), TestTimeoutMedium).Should(Equal(v1.PodRunning))
+			Eventually(IntegrationPodPhase(ns, "first"), TestTimeoutMedium).Should(Equal(corev1.PodRunning))
 			Eventually(IntegrationLogs(ns, "first"), TestTimeoutShort).Should(ContainSubstring("Magicstring!"))
 			// Start a second integration with the same lock (it should not start the route)
 			Expect(Kamel("run", "-n", ns, "files/Master.java",
@@ -59,9 +72,9 @@ func TestMasterTrait(t *testing.T) {
 				"--label", "leader-group=same",
 				"-t", "master.label-key=leader-group",
 				"-t", "master.label-value=same",
-				"-t", "master.configmap=first-lock",
+				"-t", "master.resource-name=first-lock",
 				"-t", "owner.target-labels=leader-group").Execute()).To(Succeed())
-			Eventually(IntegrationPodPhase(ns, "second"), TestTimeoutMedium).Should(Equal(v1.PodRunning))
+			Eventually(IntegrationPodPhase(ns, "second"), TestTimeoutMedium).Should(Equal(corev1.PodRunning))
 			Eventually(IntegrationLogs(ns, "second"), TestTimeoutShort).Should(ContainSubstring("started in"))
 			Eventually(IntegrationLogs(ns, "second"), 30*time.Second).ShouldNot(ContainSubstring("Magicstring!"))
 			Expect(Kamel("delete", "--all", "-n", ns).Execute()).To(Succeed())

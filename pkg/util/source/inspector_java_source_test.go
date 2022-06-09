@@ -19,21 +19,27 @@ package source
 
 import (
 	"fmt"
-	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-
+	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
 	"github.com/apache/camel-k/pkg/util/camel"
+
+	"github.com/stretchr/testify/assert"
 )
 
 const JavaSourceKameletEip = `
 from("direct:start")
     .kamelet("foo/bar?baz=test")
 `
+
 const JavaSourceKameletEndpoint = `
 from("direct:start")
     .to("kamelet:foo/bar?baz=test")
+`
+
+const JavaSourceWireTapEip = `
+from("direct:start")
+    .wireTap("kamelet:foo/bar?baz=test")
 `
 
 func TestJavaSourceKamelet(t *testing.T) {
@@ -49,9 +55,14 @@ func TestJavaSourceKamelet(t *testing.T) {
 			source:   JavaSourceKameletEndpoint,
 			kamelets: []string{"foo/bar"},
 		},
+		{
+			source:   JavaSourceWireTapEip,
+			kamelets: []string{"foo/bar"},
+		},
 	}
 
-	for i, test := range tc {
+	for i := range tc {
+		test := tc[i]
 		t.Run(fmt.Sprintf("TestJavaSourceKamelet-%d", i), func(t *testing.T) {
 			code := v1.SourceSpec{
 				DataSpec: v1.DataSpec{

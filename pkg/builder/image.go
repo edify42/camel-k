@@ -87,7 +87,7 @@ func executableDockerfile(ctx *builderContext) error {
 		USER nonroot
 	`)
 
-	err := ioutil.WriteFile(path.Join(ctx.Path, ContextDir, "Dockerfile"), dockerfile, 0777)
+	err := ioutil.WriteFile(path.Join(ctx.Path, ContextDir, "Dockerfile"), dockerfile, 0o400)
 	if err != nil {
 		return err
 	}
@@ -111,7 +111,7 @@ func jvmDockerfile(ctx *builderContext) error {
 		USER 1000
 	`)
 
-	err := ioutil.WriteFile(path.Join(ctx.Path, ContextDir, "Dockerfile"), dockerfile, 0777)
+	err := ioutil.WriteFile(path.Join(ctx.Path, ContextDir, "Dockerfile"), dockerfile, 0o400)
 	if err != nil {
 		return err
 	}
@@ -120,12 +120,6 @@ func jvmDockerfile(ctx *builderContext) error {
 }
 
 func incrementalImageContext(ctx *builderContext) error {
-	if ctx.Build.BaseImage != "" {
-		// If the build requires a specific image, don't try to determine the
-		// base image using artifact so just use the standard packages
-		return standardImageContext(ctx)
-	}
-
 	images, err := listPublishedImages(ctx)
 	if err != nil {
 		return err
@@ -144,11 +138,9 @@ func incrementalImageContext(ctx *builderContext) error {
 					ctx.SelectedArtifacts = append(ctx.SelectedArtifacts, entry)
 				}
 			}
-		} else {
-			if ctx.BaseImage == "" {
-				// TODO: transient workaround to be removed in 1.8.x
-				ctx.BaseImage = defaults.BaseImage()
-			}
+		} else if ctx.BaseImage == "" {
+			// TODO: transient workaround to be removed in 1.8.x
+			ctx.BaseImage = defaults.BaseImage()
 		}
 
 		return nil
@@ -163,7 +155,7 @@ func imageContext(ctx *builderContext, selector artifactsSelector) error {
 
 	contextDir := path.Join(ctx.Path, ContextDir)
 
-	err = os.MkdirAll(contextDir, 0777)
+	err = os.MkdirAll(contextDir, 0o700)
 	if err != nil {
 		return err
 	}
@@ -177,8 +169,9 @@ func imageContext(ctx *builderContext, selector artifactsSelector) error {
 
 	for _, entry := range ctx.Resources {
 		filePath, fileName := path.Split(entry.Target)
-		if err := util.WriteFileWithContent(path.Join(contextDir, filePath), fileName, entry.Content); err != nil {
-			return nil
+		fullPath := path.Join(contextDir, filePath, fileName)
+		if err := util.WriteFileWithContent(fullPath, entry.Content); err != nil {
+			return err
 		}
 	}
 

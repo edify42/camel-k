@@ -41,11 +41,11 @@ func newKameletGetCmd(rootCmdOptions *RootCmdOptions) (*cobra.Command, *kameletG
 		Long:    `Get defined Kamelet.`,
 		PreRunE: decode(&options),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := options.validate(cmd, args); err != nil {
+			if err := options.validate(); err != nil {
 				return err
 			}
 			if err := options.run(cmd); err != nil {
-				fmt.Println(err.Error())
+				fmt.Fprintln(cmd.ErrOrStderr(), err.Error())
 			}
 
 			return nil
@@ -72,7 +72,7 @@ type kameletGetCommandOptions struct {
 	ReadOnly bool   `mapstructure:"read-only"`
 }
 
-func (command *kameletGetCommandOptions) validate(cmd *cobra.Command, args []string) error {
+func (command *kameletGetCommandOptions) validate() error {
 	count := 0
 	for _, b := range []bool{command.Sink, command.Source, command.Action} {
 		if b {
@@ -133,7 +133,6 @@ func (command *kameletGetCommandOptions) run(cmd *cobra.Command) error {
 			readOnly,
 			kl.Spec.Definition.Title)
 	}
-	w.Flush()
 
-	return nil
+	return w.Flush()
 }

@@ -26,13 +26,13 @@ import (
 	"k8s.io/gengo/namer"
 )
 
-// CustomArgs --
+// CustomArgs --.
 type CustomArgs struct {
-	DocDir    string
+	DocDir      string
 	ResourceDir string
-	TraitPath string
-	NavPath   string
-	ListPath  string
+	TraitPath   string
+	NavPath     string
+	ListPath    string
 }
 
 // NameSystems returns the name system used by the generators in this package.
@@ -48,7 +48,7 @@ func DefaultNameSystem() string {
 	return "default"
 }
 
-// Packages --
+// Packages --.
 func Packages(context *generator.Context, arguments *args.GeneratorArgs) (packages generator.Packages) {
 	for _, i := range context.Inputs {
 		pkg := context.Universe[i]

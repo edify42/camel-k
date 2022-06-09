@@ -113,8 +113,8 @@ traits:
     description: To configure a different port exposed by the container (default `8080`).
   - name: port-name
     type: string
-    description: To configure a different port name for the port exposed by the container
-      (default `http`).
+    description: To configure a different port name for the port exposed by the container.
+      It defaults to `http` only when the `expose` parameter is true.
   - name: service-port
     type: int
     description: To configure under which service port the container port is to be
@@ -134,53 +134,60 @@ traits:
     description: 'The pull policy: Always|Never|IfNotPresent'
   - name: probes-enabled
     type: bool
-    description: ProbesEnabled enable/disable probes on the container (default `false`)
+    description: 'DeprecatedProbesEnabled enable/disable probes on the container (default
+      `false`)Deprecated: replaced by the health trait.'
   - name: liveness-scheme
     type: string
-    description: Scheme to use when connecting. Defaults to HTTP. Applies to the liveness
-      probe.
+    description: 'Scheme to use when connecting. Defaults to HTTP. Applies to the
+      liveness probe.Deprecated: replaced by the health trait.'
   - name: liveness-initial-delay
     type: int32
-    description: Number of seconds after the container has started before liveness
-      probes are initiated.
+    description: 'Number of seconds after the container has started before liveness
+      probes are initiated.Deprecated: replaced by the health trait.'
   - name: liveness-timeout
     type: int32
-    description: Number of seconds after which the probe times out. Applies to the
-      liveness probe.
+    description: 'Number of seconds after which the probe times out. Applies to the
+      liveness probe.Deprecated: replaced by the health trait.'
   - name: liveness-period
     type: int32
-    description: How often to perform the probe. Applies to the liveness probe.
+    description: 'How often to perform the probe. Applies to the liveness probe.Deprecated:
+      replaced by the health trait.'
   - name: liveness-success-threshold
     type: int32
-    description: Minimum consecutive successes for the probe to be considered successful
-      after having failed.Applies to the liveness probe.
+    description: 'Minimum consecutive successes for the probe to be considered successful
+      after having failed.Applies to the liveness probe.Deprecated: replaced by the
+      health trait.'
   - name: liveness-failure-threshold
     type: int32
-    description: Minimum consecutive failures for the probe to be considered failed
-      after having succeeded.Applies to the liveness probe.
+    description: 'Minimum consecutive failures for the probe to be considered failed
+      after having succeeded.Applies to the liveness probe.Deprecated: replaced by
+      the health trait.'
   - name: readiness-scheme
     type: string
-    description: Scheme to use when connecting. Defaults to HTTP. Applies to the readiness
-      probe.
+    description: 'Scheme to use when connecting. Defaults to HTTP. Applies to the
+      readiness probe.Deprecated: replaced by the health trait.'
   - name: readiness-initial-delay
     type: int32
-    description: Number of seconds after the container has started before readiness
-      probes are initiated.
+    description: 'Number of seconds after the container has started before readiness
+      probes are initiated.Deprecated: replaced by the health trait.'
   - name: readiness-timeout
     type: int32
-    description: Number of seconds after which the probe times out. Applies to the
-      readiness probe.
+    description: 'Number of seconds after which the probe times out. Applies to the
+      readiness probe.Deprecated: replaced by the health trait.'
   - name: readiness-period
     type: int32
-    description: How often to perform the probe. Applies to the readiness probe.
+    description: 'How often to perform the probe. Applies to the readiness probe.Deprecated:
+      replaced by the health trait.'
   - name: readiness-success-threshold
     type: int32
-    description: Minimum consecutive successes for the probe to be considered successful
-      after having failed.Applies to the readiness probe.
+    description: 'Minimum consecutive successes for the probe to be considered successful
+      after having failed.Applies to the readiness probe.Deprecated: replaced by the
+      health trait.'
   - name: readiness-failure-threshold
     type: int32
-    description: Minimum consecutive failures for the probe to be considered failed
-      after having succeeded.Applies to the readiness probe.
+    description: 'Minimum consecutive failures for the probe to be considered failed
+      after having succeeded.Applies to the readiness probe.Deprecated: replaced by
+      the health trait.'
 - name: cron
   platform: false
   profiles:
@@ -274,6 +281,11 @@ traits:
     description: Allows to explicitly select the desired deployment kind between `deployment`,
       `cron-job` or `knative-service` when creating the resources for running the
       integration.
+  - name: use-ssa
+    type: bool
+    description: Use server-side apply to update the owned resources (default `true`).Note
+      that it automatically falls back to client-side patching, if SSA is not available,
+      e.g., on old Kubernetes clusters.
 - name: deployment
   platform: true
   profiles:
@@ -308,10 +320,15 @@ traits:
     type: bool
     description: Enables injection of `NAMESPACE` and `POD_NAME` environment variables
       (default `true`)
+  - name: http-proxy
+    type: bool
+    description: Propagates the `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` environment
+      variables (default `true`)
   - name: vars
     type: '[]string'
-    description: A list of variables to be created on the Pod. Must have KEY=VALUE
-      syntax (ie, MY_VAR="my value").
+    description: A list of environment variables to be added to the integration container.The
+      syntax is KEY=VALUE, e.g., `MY_VAR="my value"`.These take precedence over the
+      previously defined environment variables.
 - name: error-handler
   platform: true
   profiles:
@@ -342,9 +359,72 @@ traits:
     description: Can be used to enable or disable a trait. All traits share this common
       property.
   - name: discovery-cache
-    type: ./pkg/trait.discoveryCacheType
+    type: github.com/apache/camel-k/pkg/trait.discoveryCacheType
     description: Discovery client cache to be used, either `disabled`, `disk` or `memory`
       (default `memory`)
+- name: health
+  platform: false
+  profiles:
+  - Kubernetes
+  - Knative
+  - OpenShift
+  description: The health trait is responsible for configuring the health probes on
+    the integration container. It's disabled by default.
+  properties:
+  - name: enabled
+    type: bool
+    description: Can be used to enable or disable a trait. All traits share this common
+      property.
+  - name: liveness-probe-enabled
+    type: bool
+    description: Configures the liveness probe for the integration container (default
+      `false`).
+  - name: liveness-scheme
+    type: string
+    description: Scheme to use when connecting to the liveness probe (default `HTTP`).
+  - name: liveness-initial-delay
+    type: int32
+    description: Number of seconds after the container has started before the liveness
+      probe is initiated.
+  - name: liveness-timeout
+    type: int32
+    description: Number of seconds after which the liveness probe times out.
+  - name: liveness-period
+    type: int32
+    description: How often to perform the liveness probe.
+  - name: liveness-success-threshold
+    type: int32
+    description: Minimum consecutive successes for the liveness probe to be considered
+      successful after having failed.
+  - name: liveness-failure-threshold
+    type: int32
+    description: Minimum consecutive failures for the liveness probe to be considered
+      failed after having succeeded.
+  - name: readiness-probe-enabled
+    type: bool
+    description: Configures the readiness probe for the integration container (default
+      `true`).
+  - name: readiness-scheme
+    type: string
+    description: Scheme to use when connecting to the readiness probe (default `HTTP`).
+  - name: readiness-initial-delay
+    type: int32
+    description: Number of seconds after the container has started before the readiness
+      probe is initiated.
+  - name: readiness-timeout
+    type: int32
+    description: Number of seconds after which the readiness probe times out.
+  - name: readiness-period
+    type: int32
+    description: How often to perform the readiness probe.
+  - name: readiness-success-threshold
+    type: int32
+    description: Minimum consecutive successes for the readiness probe to be considered
+      successful after having failed.
+  - name: readiness-failure-threshold
+    type: int32
+    description: Minimum consecutive failures for the readiness probe to be considered
+      failed after having succeeded.
 - name: ingress
   platform: false
   profiles:
@@ -500,6 +580,57 @@ traits:
   - name: list
     type: string
     description: Comma separated list of Kamelet names to load into the current integration
+- name: keda
+  platform: false
+  profiles:
+  - Kubernetes
+  - Knative
+  - OpenShift
+  description: The KEDA trait can be used for automatic integration with KEDA autoscalers.
+    The trait can be either manually configured using the `triggers` option or automatically
+    configured via markers in the Kamelets. For information on how to use KEDA enabled
+    Kamelets with the KEDA trait, refer to xref:ROOT:kamelets/kamelets-user.adoc#kamelet-keda-user[the
+    KEDA section in the Kamelets user guide]. If you want to create Kamelets that
+    contain KEDA metadata, refer to xref:ROOT:kamelets/kamelets-dev.adoc#kamelet-keda-dev[the
+    KEDA section in the Kamelets development guide]. The KEDA trait is disabled by
+    default.
+  properties:
+  - name: enabled
+    type: bool
+    description: Can be used to enable or disable a trait. All traits share this common
+      property.
+  - name: auto
+    type: bool
+    description: Enables automatic configuration of the trait. Allows the trait to
+      infer KEDA triggers from the Kamelets.
+  - name: hack-controller-replicas
+    type: bool
+    description: Set the spec->replicas field on the top level controller to an explicit
+      value if missing, to allow KEDA to recognize it as a scalable resource.
+  - name: polling-interval
+    type: int32
+    description: Interval (seconds) to check each trigger on.
+  - name: cooldown-period
+    type: int32
+    description: The wait period between the last active trigger reported and scaling
+      the resource back to 0.
+  - name: idle-replica-count
+    type: int32
+    description: Enabling this property allows KEDA to scale the resource down to
+      the specified number of replicas.
+  - name: min-replica-count
+    type: int32
+    description: Minimum number of replicas.
+  - name: max-replica-count
+    type: int32
+    description: Maximum number of replicas.
+  - name: triggers
+    type: '[]github.com/apache/camel-k/addons/keda.kedaTrigger'
+    description: Definition of triggers according to the KEDA format. Each trigger
+      must contain `type` field correspondingto the name of a KEDA autoscaler and
+      a key/value map named `metadata` containing specific trigger options.An optional
+      `authentication-secret` can be declared per trigger and the operator will link
+      each entry ofthe secret to a KEDA authentication parameter.
 - name: knative-service
   platform: false
   profiles:
@@ -662,14 +793,11 @@ traits:
       add dependencies required by delegate endpoints.E.g. when using `master:lockname:timer`,
       then `camel:timer` is automatically added to the set of dependencies.It's enabled
       by default.
-  - name: configmap
-    type: string
-    description: 'Name of the configmap that will be used to store the lock. Defaults
-      to "<integration-name>-lock".Deprecated: replaced by "resource-name".'
   - name: resource-name
     type: string
-    description: Name of the configmap/lease resource that will be used to store the
-      lock. Defaults to "<integration-name>-lock".
+    description: Name of the configmap that will be used to store the lock. Defaults
+      to "<integration-name>-lock".Name of the configmap/lease resource that will
+      be used to store the lock. Defaults to "<integration-name>-lock".
   - name: resource-type
     type: string
     description: Type of Kubernetes resource to use for locking ("ConfigMap" or "Lease").
@@ -682,6 +810,38 @@ traits:
     type: string
     description: Label value that will be used to identify all pods contending the
       lock. Defaults to the integration name.
+- name: mount
+  platform: true
+  profiles:
+  - Kubernetes
+  - Knative
+  - OpenShift
+  description: The Mount trait can be used to configure volumes mounted on the Integration
+    Pods.
+  properties:
+  - name: enabled
+    type: bool
+    description: Can be used to enable or disable a trait. All traits share this common
+      property.
+  - name: configs
+    type: '[]string'
+    description: 'A list of configuration pointing to configmap/secret.The configuration
+      are expected to be UTF-8 resources as they are processed by runtime Camel Context
+      and tried to be parsed as property files.They are also made available on the
+      classpath in order to ease their usage directly from the Route.Syntax: [configmap|secret]:name[key],
+      where name represents the resource name and key optionally represents the resource
+      key to be filtered'
+  - name: resources
+    type: '[]string'
+    description: 'A list of resources (text or binary content) pointing to configmap/secret.The
+      resources are expected to be any resource type (text or binary content).The
+      destination path can be either a default location or any path specified by the
+      user.Syntax: [configmap|secret]:name[/key][@path], where name represents the
+      resource name, key optionally represents the resource key to be filtered and
+      path represents the destination path'
+  - name: volumes
+    type: '[]string'
+    description: 'A list of Persistent Volume Claims to be mounted. Syntax: [pvcname:/container/path]'
 - name: openapi
   platform: true
   profiles:
@@ -690,7 +850,14 @@ traits:
   - OpenShift
   description: The OpenAPI DSL trait is internally used to allow creating integrations
     from a OpenAPI specs.
-  properties: []
+  properties:
+  - name: enabled
+    type: bool
+    description: Can be used to enable or disable a trait. All traits share this common
+      property.
+  - name: configmaps
+    type: '[]string'
+    description: The configmaps holding the spec of the OpenAPI
 - name: owner
   platform: true
   profiles:
@@ -849,13 +1016,22 @@ traits:
     description: Can be used to enable or disable a trait. All traits share this common
       property.
   - name: package-type
-    type: '[]./pkg/trait.quarkusPackageType'
+    type: '[]github.com/apache/camel-k/pkg/trait.quarkusPackageType'
     description: The Quarkus package types, either `fast-jar` or `native` (default
       `fast-jar`).In case both `fast-jar` and `native` are specified, two `IntegrationKit`
       resources are created,with the `native` kit having precedence over the `fast-jar`
       one once ready.The order influences the resolution of the current kit for the
       integration.The kit corresponding to the first package type will be assigned
       to theintegration in case no existing kit that matches the integration exists.
+- name: registry
+  platform: false
+  profiles:
+  - Kubernetes
+  - Knative
+  - OpenShift
+  description: The Registry trait sets up Maven to use the Image registry as a Maven
+    repository.
+  properties: []
 - name: route
   platform: false
   profiles:
@@ -973,7 +1149,7 @@ traits:
     description: To automatically detect from the code if a Service needs to be created.
   - name: node-port
     type: bool
-    description: Enable Service to be exposed as NodePort
+    description: Enable Service to be exposed as NodePort (default `false`).
 - name: 3scale
   platform: false
   profiles:

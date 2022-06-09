@@ -99,10 +99,15 @@ func (command *traitHelpCommandOptions) validate(args []string) error {
 
 func (command *traitHelpCommandOptions) run(cmd *cobra.Command, args []string) error {
 	var traitDescriptions []*traitDescription
-	var catalog = trait.NewCatalog(nil)
+	catalog := trait.NewCatalog(nil)
 
-	var traitMetaData = &traitMetaData{}
-	err := yaml.Unmarshal(resources.Resource("/traits.yaml"), traitMetaData)
+	content, err := resources.Resource("/traits.yaml")
+	if err != nil {
+		return err
+	}
+
+	traitMetaData := traitMetaData{}
+	err = yaml.Unmarshal(content, &traitMetaData)
 	if err != nil {
 		return err
 	}
@@ -239,18 +244,18 @@ func outputTraits(descriptions []*traitDescription) (string, error) {
 		w := indentedwriter.NewWriter(out)
 
 		for _, td := range descriptions {
-			w.Write(0, "Name:\t%s\n", td.Name)
-			w.Write(0, "Profiles:\t%s\n", strings.Join(td.Profiles, ","))
-			w.Write(0, "Platform:\t%t\n", td.Platform)
-			w.Write(0, "Properties:\n")
+			w.Writef(0, "Name:\t%s\n", td.Name)
+			w.Writef(0, "Profiles:\t%s\n", strings.Join(td.Profiles, ","))
+			w.Writef(0, "Platform:\t%t\n", td.Platform)
+			w.Writef(0, "Properties:\n")
 			for _, p := range td.Properties {
-				w.Write(1, "%s:\n", p.Name)
-				w.Write(2, "Type:\t%s\n", p.TypeName)
+				w.Writef(1, "%s:\n", p.Name)
+				w.Writef(2, "Type:\t%s\n", p.TypeName)
 				if p.DefaultValue != nil {
-					w.Write(2, "Default Value:\t%v\n", p.DefaultValue)
+					w.Writef(2, "Default Value:\t%v\n", p.DefaultValue)
 				}
 			}
-			w.Writeln(0, "")
+			w.Writelnf(0, "")
 		}
 
 		return nil

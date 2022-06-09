@@ -129,11 +129,12 @@ func createBuilderTestEnv(cluster v1.IntegrationPlatformCluster, strategy v1.Int
 			Spec: v1.IntegrationPlatformSpec{
 				Cluster: cluster,
 				Build: v1.IntegrationPlatformBuildSpec{
-					PublishStrategy:  strategy,
-					Registry:         v1.RegistrySpec{Address: "registry"},
-					RuntimeVersion:   defaults.DefaultRuntimeVersion,
-					RuntimeProvider:  v1.RuntimeProviderQuarkus,
-					KanikoBuildCache: &kanikoCache,
+					PublishStrategy:        strategy,
+					Registry:               v1.RegistrySpec{Address: "registry"},
+					RuntimeVersion:         defaults.DefaultRuntimeVersion,
+					RuntimeProvider:        v1.RuntimeProviderQuarkus,
+					PublishStrategyOptions: map[string]string{},
+					KanikoBuildCache:       &kanikoCache,
 				},
 			},
 		},
@@ -163,7 +164,7 @@ func TestMavenPropertyBuilderTrait(t *testing.T) {
 }
 
 func createNominalBuilderTraitTest() *builderTrait {
-	builderTrait := newBuilderTrait().(*builderTrait)
+	builderTrait, _ := newBuilderTrait().(*builderTrait)
 	builderTrait.Enabled = BoolP(true)
 
 	return builderTrait

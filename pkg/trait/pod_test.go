@@ -22,7 +22,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"gopkg.in/yaml.v2"
+	"k8s.io/apimachinery/pkg/util/yaml"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -87,8 +87,21 @@ func TestChangeEnvVariables(t *testing.T) {
 	assert.Equal(t, containsEnvVariables(templateSpec, "integration", "CAMEL_K_DIGEST"), "new_value")
 }
 
+func TestSupplementalGroup(t *testing.T) {
+	templateString := "{containers: [], securityContext: {supplementalGroups: [666]}}}"
+
+	templateSpec := testPodTemplateSpec(t, templateString)
+
+	// Check if securityContext was added
+	assert.NotNil(t, templateSpec.Spec)
+	assert.NotNil(t, templateSpec.Spec.SecurityContext)
+	assert.NotNil(t, templateSpec.Spec.SecurityContext.SupplementalGroups)
+	assert.Contains(t, templateSpec.Spec.SecurityContext.SupplementalGroups, int64(666))
+}
+
+// nolint: unparam
 func createPodTest(podSpecTemplate string) (*podTrait, *Environment, *appsv1.Deployment) {
-	trait := newPodTrait().(*podTrait)
+	trait, _ := newPodTrait().(*podTrait)
 	trait.Enabled = BoolP(true)
 
 	var podSpec v1.PodSpec
@@ -184,6 +197,8 @@ func getContainer(containers []corev1.Container, name string) *corev1.Container 
 }
 
 func testPodTemplateSpec(t *testing.T, template string) corev1.PodTemplateSpec {
+	t.Helper()
+
 	trait, environment, _ := createPodTest(template)
 
 	_, err := trait.Configure(environment)

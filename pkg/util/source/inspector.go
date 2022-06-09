@@ -29,7 +29,7 @@ import (
 type catalog2deps func(*camel.RuntimeCatalog) []string
 
 const (
-	defaultJsonDataFormat = "json-jackson"
+	defaultJSONDataFormat = "jackson"
 )
 
 var (
@@ -40,9 +40,11 @@ var (
 	singleQuotedTo          = regexp.MustCompile(`\.to\s*\(\s*'([a-zA-Z0-9-]+:[^']+)'`)
 	singleQuotedToD         = regexp.MustCompile(`\.toD\s*\(\s*'([a-zA-Z0-9-]+:[^']+)'`)
 	singleQuotedToF         = regexp.MustCompile(`\.toF\s*\(\s*'([a-zA-Z0-9-]+:[^']+)'`)
+	singleQuotedWireTap     = regexp.MustCompile(`\.wireTap\s*\(\s*'([a-zA-Z0-9-]+:[^']+)'`)
 	doubleQuotedTo          = regexp.MustCompile(`\.to\s*\(\s*"([a-zA-Z0-9-]+:[^"]+)"`)
 	doubleQuotedToD         = regexp.MustCompile(`\.toD\s*\(\s*"([a-zA-Z0-9-]+:[^"]+)"`)
 	doubleQuotedToF         = regexp.MustCompile(`\.toF\s*\(\s*"([a-zA-Z0-9-]+:[^"]+)"`)
+	doubleQuotedWireTap     = regexp.MustCompile(`\.wireTap\s*\(\s*"([a-zA-Z0-9-]+:[^"]+)"`)
 	languageRegexp          = regexp.MustCompile(`language\s*\(\s*["|']([a-zA-Z0-9-]+[^"|']+)["|']\s*,.*\)`)
 	camelTypeRegexp         = regexp.MustCompile(`.*(org.apache.camel.*Component|DataFormat|Language)`)
 	jsonLibraryRegexp       = regexp.MustCompile(`.*JsonLibrary\.Jackson.*`)
@@ -68,21 +70,21 @@ var (
 	sourceDependencies = map[*regexp.Regexp]catalog2deps{
 		jsonLibraryRegexp: func(catalog *camel.RuntimeCatalog) []string {
 			res := make([]string, 0)
-			if jsonDF := catalog.GetArtifactByDataFormat(defaultJsonDataFormat); jsonDF != nil {
+			if jsonDF := catalog.GetArtifactByDataFormat(defaultJSONDataFormat); jsonDF != nil {
 				res = append(res, jsonDF.GetDependencyID())
 			}
 			return res
 		},
 		jsonLanguageRegexp: func(catalog *camel.RuntimeCatalog) []string {
 			res := make([]string, 0)
-			if jsonDF := catalog.GetArtifactByDataFormat(defaultJsonDataFormat); jsonDF != nil {
+			if jsonDF := catalog.GetArtifactByDataFormat(defaultJSONDataFormat); jsonDF != nil {
 				res = append(res, jsonDF.GetDependencyID())
 			}
 			return res
 		},
 		restConfigurationRegexp: func(catalog *camel.RuntimeCatalog) []string {
 			deps := make([]string, 0)
-			if c, ok := catalog.CamelCatalogSpec.Runtime.Capabilities["rest"]; ok {
+			if c, ok := catalog.CamelCatalogSpec.Runtime.Capabilities[v1.CapabilityRest]; ok {
 				for _, d := range c.Dependencies {
 					deps = append(deps, d.GetDependencyID())
 				}
@@ -91,7 +93,7 @@ var (
 		},
 		restRegexp: func(catalog *camel.RuntimeCatalog) []string {
 			deps := make([]string, 0)
-			if c, ok := catalog.CamelCatalogSpec.Runtime.Capabilities["rest"]; ok {
+			if c, ok := catalog.CamelCatalogSpec.Runtime.Capabilities[v1.CapabilityRest]; ok {
 				for _, d := range c.Dependencies {
 					deps = append(deps, d.GetDependencyID())
 				}
@@ -100,7 +102,7 @@ var (
 		},
 		restClosureRegexp: func(catalog *camel.RuntimeCatalog) []string {
 			deps := make([]string, 0)
-			if c, ok := catalog.CamelCatalogSpec.Runtime.Capabilities["rest"]; ok {
+			if c, ok := catalog.CamelCatalogSpec.Runtime.Capabilities[v1.CapabilityRest]; ok {
 				for _, d := range c.Dependencies {
 					deps = append(deps, d.GetDependencyID())
 				}
@@ -159,12 +161,12 @@ var (
 	}
 )
 
-// Inspector --
+// Inspector --.
 type Inspector interface {
 	Extract(v1.SourceSpec, *Metadata) error
 }
 
-// InspectorForLanguage --
+// InspectorForLanguage --.
 func InspectorForLanguage(catalog *camel.RuntimeCatalog, language v1.Language) Inspector {
 	switch language {
 	case v1.LanguageJavaSource:
@@ -215,7 +217,7 @@ func (i baseInspector) Extract(v1.SourceSpec, *Metadata) error {
 	return nil
 }
 
-// discoverDependencies returns a list of dependencies required by the given source code
+// discoverDependencies returns a list of dependencies required by the given source code.
 func (i *baseInspector) discoverCapabilities(source v1.SourceSpec, meta *Metadata) {
 	uris := util.StringSliceJoin(meta.FromURIs, meta.ToURIs)
 
@@ -236,7 +238,7 @@ func (i *baseInspector) discoverCapabilities(source v1.SourceSpec, meta *Metadat
 	}
 }
 
-// discoverDependencies returns a list of dependencies required by the given source code
+// discoverDependencies returns a list of dependencies required by the given source code.
 func (i *baseInspector) discoverDependencies(source v1.SourceSpec, meta *Metadata) {
 	for _, uri := range meta.FromURIs {
 		candidateComp, scheme := i.catalog.DecodeComponent(uri)
@@ -290,6 +292,7 @@ func (i *baseInspector) discoverDependencies(source v1.SourceSpec, meta *Metadat
 }
 
 // discoverDependencies inspects endpoints and extract kamelets
+// nolint: unparam
 func (i *baseInspector) discoverKamelets(source v1.SourceSpec, meta *Metadata) {
 	for _, uri := range meta.FromURIs {
 		AddKamelet(meta, uri)
@@ -303,7 +306,7 @@ func (i *baseInspector) addDependency(dependency string, meta *Metadata) {
 	meta.Dependencies.Add(dependency)
 }
 
-// hasOnlyPassiveEndpoints returns true if the source has no endpoint that needs to remain always active
+// hasOnlyPassiveEndpoints returns true if the source has no endpoint that needs to remain always active.
 func (i *baseInspector) hasOnlyPassiveEndpoints(fromURIs []string) bool {
 	passivePlusHTTP := make(map[string]bool)
 	i.catalog.VisitSchemes(func(id string, scheme v1.CamelScheme) bool {

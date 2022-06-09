@@ -101,18 +101,6 @@ func (in *IntegrationSpec) AddConfiguration(confType string, confValue string) {
 	})
 }
 
-// AddConfigurationAsResource will set a configuration specified with a resource type
-func (in *IntegrationSpec) AddConfigurationAsResource(
-	confType string, confValue string, resourceType string, resourceMountPoint string, resourceKey string) {
-	in.Configuration = append(in.Configuration, ConfigurationSpec{
-		Type:               confType,
-		Value:              confValue,
-		ResourceType:       resourceType,
-		ResourceMountPoint: resourceMountPoint,
-		ResourceKey:        resourceKey,
-	})
-}
-
 func (in *IntegrationSpec) AddDependency(dependency string) {
 	if in.Dependencies == nil {
 		in.Dependencies = make([]string, 0)
@@ -279,6 +267,11 @@ func (in *Integration) SetIntegrationPlatform(platform *IntegrationPlatform) {
 }
 
 func (in *Integration) SetIntegrationKit(kit *IntegrationKit) {
+	if kit == nil {
+		in.Status.IntegrationKit = nil
+		return
+	}
+
 	cs := corev1.ConditionTrue
 	message := kit.Name
 	if kit.Status.Phase != IntegrationKitPhaseReady {

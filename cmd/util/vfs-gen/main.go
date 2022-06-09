@@ -29,6 +29,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/apache/camel-k/pkg/util"
+
 	"github.com/apache/camel-k/cmd/util/vfs-gen/multifs"
 	"github.com/apache/camel-k/pkg/base"
 	"github.com/shurcooL/httpfs/filter"
@@ -36,7 +38,6 @@ import (
 )
 
 func main() {
-
 	var rootDir string
 	var destDir string
 
@@ -140,14 +141,14 @@ limitations under the License.
 */
 
 `
-	content, err := ioutil.ReadFile(resourceFile)
+	content, err := util.ReadFile(resourceFile)
 	if err != nil {
 		log.Fatalln(err)
 	}
 	var finalContent []byte
 	finalContent = append(finalContent, []byte(header)...)
 	finalContent = append(finalContent, content...)
-	if err := ioutil.WriteFile(resourceFile, finalContent, 0777); err != nil {
+	if err := ioutil.WriteFile(resourceFile, finalContent, 0o600); err != nil {
 		log.Fatalln(err)
 	}
 }
@@ -169,7 +170,7 @@ func NamedFilesFilter(names ...string) func(path string, fi os.FileInfo) bool {
 }
 
 //
-// If file is bigger than maximum size (in bytes) then exclude
+// If file is bigger than maximum size (in bytes) then exclude.
 //
 func BigFilesFilter(size int) func(path string, fi os.FileInfo) bool {
 	return func(path string, fi os.FileInfo) bool {
@@ -189,8 +190,8 @@ func BigFilesFilter(size int) func(path string, fi os.FileInfo) bool {
 func calcExclusions(root string, dirNames []string) []string {
 	var exclusions []string
 
-	for _, dirName := range dirNames {
-		dirName = filepath.Join(root, dirName)
+	for _, name := range dirNames {
+		dirName := filepath.Join(root, name)
 		if err := filepath.Walk(dirName, func(resPath string, info os.FileInfo, err error) error {
 			if info.IsDir() {
 				ignoreFileName := path.Join(resPath, ".vfsignore")
@@ -223,13 +224,13 @@ func checkDir(dirName string) error {
 		return err
 	}
 	if !dir.IsDir() {
-		return fmt.Errorf("path %s is not a directory\n", dirName)
+		return fmt.Errorf("path %s is not a directory", dirName)
 	}
 
 	return nil
 }
 
-// modTimeFS wraps http.FileSystem to set mod time to 0 for all files
+// modTimeFS wraps http.FileSystem to set mod time to 0 for all files.
 type modTimeFS struct {
 	fs http.FileSystem
 }

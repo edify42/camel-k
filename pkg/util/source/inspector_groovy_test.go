@@ -19,8 +19,9 @@ package source
 
 import (
 	"fmt"
-	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
 	"testing"
+
+	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
 
 	"github.com/stretchr/testify/assert"
 
@@ -31,17 +32,25 @@ const GroovyKameletEip = `
 from("direct:start")
     .kamelet("foo/bar?baz=test")
 `
-const GroovyKameletEip_SingleQuote = `
+
+const GroovyKameletEipSingleQuote = `
 from("direct:start")
     .kamelet('foo/bar?baz=test')
 `
+
 const GroovyKameletEndpoint = `
 from("direct:start")
     .to("kamelet:foo/bar?baz=test")
 `
-const GroovyKameletEndpoint_SingleQuote = `
+
+const GroovyKameletEndpointSingleQuote = `
 from("direct:start")
     .to('kamelet:foo/bar?baz=test')
+`
+
+const GroovyWireTapEipSingleQuote = `
+from("direct:start")
+    .wireTap('kamelet:foo/bar?baz=test')
 `
 
 func TestGroovyKamelet(t *testing.T) {
@@ -58,16 +67,21 @@ func TestGroovyKamelet(t *testing.T) {
 			kamelets: []string{"foo/bar"},
 		},
 		{
-			source:   GroovyKameletEip_SingleQuote,
+			source:   GroovyKameletEipSingleQuote,
 			kamelets: []string{"foo/bar"},
 		},
 		{
-			source:   GroovyKameletEndpoint_SingleQuote,
+			source:   GroovyKameletEndpointSingleQuote,
+			kamelets: []string{"foo/bar"},
+		},
+		{
+			source:   GroovyWireTapEipSingleQuote,
 			kamelets: []string{"foo/bar"},
 		},
 	}
 
-	for i, test := range tc {
+	for i := range tc {
+		test := tc[i]
 		t.Run(fmt.Sprintf("TestGroovyKamelet-%d", i), func(t *testing.T) {
 			code := v1.SourceSpec{
 				DataSpec: v1.DataSpec{

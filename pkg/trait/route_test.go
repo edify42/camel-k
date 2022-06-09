@@ -89,15 +89,21 @@ pxv6zFeVEkAEEkqIYi0omA9+CjanB/6Bz4n1uw8H
 
 	tlsKeySecretName        = "tls-test"
 	tlsKeySecretOnlyKeyName = "tls.key"
-	tlsKeySecretKeyName     = tlsKeySecretName + "/" + tlsKeySecretOnlyKeyName
 
-	tlsMultipleSecretsName     = "tls-multiple-test"
+	// Potential hardcoded credentials
+	// #nosec G101
+	tlsMultipleSecretsName = "tls-multiple-test"
+	// #nosec G101
 	tlsMultipleSecretsCert1Key = "cert1.crt"
+	// #nosec G101
 	tlsMultipleSecretsCert2Key = "cert2.crt"
+	// #nosec G101
 	tlsMultipleSecretsCert3Key = "cert3.crt"
 )
 
 func createTestRouteEnvironment(t *testing.T, name string) *Environment {
+	t.Helper()
+
 	catalog, err := camel.DefaultCatalog()
 	assert.Nil(t, err)
 	client, _ := test.NewFakeClient(
@@ -236,7 +242,7 @@ func TestRoute_Configure_IntegrationKitOnly(t *testing.T) {
 	environment := createTestRouteEnvironment(t, name)
 	environment.Integration = nil
 
-	routeTrait := newRouteTrait().(*routeTrait)
+	routeTrait, _ := newRouteTrait().(*routeTrait)
 	enabled := false
 	routeTrait.Enabled = &enabled
 

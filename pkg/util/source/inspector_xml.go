@@ -24,12 +24,12 @@ import (
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
 )
 
-// XMLInspector --
+// XMLInspector --.
 type XMLInspector struct {
 	baseInspector
 }
 
-// Extract --
+// Extract --.
 func (i XMLInspector) Extract(source v1.SourceSpec, meta *Metadata) error {
 	content := strings.NewReader(source.Content)
 	decoder := xml.NewDecoder(content)
@@ -62,7 +62,7 @@ func (i XMLInspector) Extract(source v1.SourceSpec, meta *Metadata) error {
 						meta.FromURIs = append(meta.FromURIs, a.Value)
 					}
 				}
-			case "to", "toD", "toF":
+			case "to", "toD", "toF", "wireTap":
 				for _, a := range se.Attr {
 					if a.Name.Local == "uri" {
 						meta.ToURIs = append(meta.ToURIs, a.Value)

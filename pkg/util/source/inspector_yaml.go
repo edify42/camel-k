@@ -21,17 +21,18 @@ import (
 	"fmt"
 	"strings"
 
+	yaml2 "gopkg.in/yaml.v2"
+
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
 	"github.com/apache/camel-k/pkg/util/uri"
-	yaml2 "gopkg.in/yaml.v2"
 )
 
-// YAMLInspector --
+// YAMLInspector --.
 type YAMLInspector struct {
 	baseInspector
 }
 
-// Extract --
+// Extract --.
 func (i YAMLInspector) Extract(source v1.SourceSpec, meta *Metadata) error {
 	definitions := make([]map[string]interface{}, 0)
 
@@ -69,10 +70,10 @@ func (i YAMLInspector) parseStep(key string, content interface{}, meta *Metadata
 	case "marshal":
 		if cm, ok := content.(map[interface{}]interface{}); ok {
 			if js, jsOk := cm["json"]; jsOk {
-				dataFormatID := defaultJsonDataFormat
+				dataFormatID := defaultJSONDataFormat
 				if jsContent, jsContentOk := js.(map[interface{}]interface{}); jsContentOk {
 					if lib, libOk := jsContent["library"]; libOk {
-						dataFormatID = strings.ToLower(fmt.Sprintf("json-%s", lib))
+						dataFormatID = strings.ToLower(fmt.Sprintf("%s", lib))
 					}
 				}
 				if dfDep := i.catalog.GetArtifactByDataFormat(dataFormatID); dfDep != nil {
@@ -160,13 +161,14 @@ func (i YAMLInspector) parseStep(key string, content interface{}, meta *Metadata
 		switch key {
 		case "from":
 			meta.FromURIs = append(meta.FromURIs, maybeURI)
-		case "to":
+		case "to", "to-d", "toD", "wire-tap", "wireTap":
 			meta.ToURIs = append(meta.ToURIs, maybeURI)
 		}
 	}
 	return nil
 }
 
+// TODO nolint: gocyclo.
 func (i YAMLInspector) parseStepsParam(steps []interface{}, meta *Metadata) error {
 	for _, raw := range steps {
 		if step, stepFormatOk := raw.(map[interface{}]interface{}); stepFormatOk {

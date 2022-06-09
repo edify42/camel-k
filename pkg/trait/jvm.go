@@ -19,6 +19,7 @@ package trait
 
 import (
 	"fmt"
+	"net/url"
 	"path"
 	"sort"
 	"strings"
@@ -37,11 +38,13 @@ import (
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
 	"github.com/apache/camel-k/pkg/builder"
 	"github.com/apache/camel-k/pkg/util"
+	"github.com/apache/camel-k/pkg/util/camel"
+	"github.com/apache/camel-k/pkg/util/envvar"
 )
 
 // The JVM trait is used to configure the JVM that runs the integration.
 //
-// +camel-k:trait=jvm
+// +camel-k:trait=jvm.
 type jvmTrait struct {
 	BaseTrait `property:",squash"`
 	// Activates remote debugging, so that a debugger can be attached to the JVM, e.g., using port-forwarding
@@ -75,9 +78,9 @@ func (t *jvmTrait) Configure(e *Environment) (bool, error) {
 		return false, nil
 	}
 
-	if trait := e.Catalog.GetTrait(quarkusTraitId); trait != nil {
+	if trait := e.Catalog.GetTrait(quarkusTraitID); trait != nil {
 		// The JVM trait must be disabled in case the current IntegrationKit corresponds to a native build
-		if quarkus := trait.(*quarkusTrait); IsNilOrTrue(quarkus.Enabled) && quarkus.isNativeIntegration(e) {
+		if quarkus, ok := trait.(*quarkusTrait); ok && IsNilOrTrue(quarkus.Enabled) && quarkus.isNativeIntegration(e) {
 			return false, nil
 		}
 	}
@@ -108,8 +111,8 @@ func (t *jvmTrait) Apply(e *Environment) error {
 	classpath := strset.New()
 
 	classpath.Add("./resources")
-	classpath.Add(configResourcesMountPath)
-	classpath.Add(resourcesDefaultMountPath)
+	classpath.Add(camel.ConfigResourcesMountPath)
+	classpath.Add(camel.ResourcesDefaultMountPath)
 	if t.Classpath != "" {
 		classpath.Add(strings.Split(t.Classpath, ":")...)
 	}
@@ -132,9 +135,9 @@ func (t *jvmTrait) Apply(e *Environment) error {
 		)
 	}
 
-	container := e.getIntegrationContainer()
+	container := e.GetIntegrationContainer()
 	if container == nil {
-		return nil
+		return fmt.Errorf("unable to find integration container")
 	}
 
 	// Build the container command
@@ -168,6 +171,59 @@ func (t *jvmTrait) Apply(e *Environment) error {
 		args = append(args, t.Options...)
 	}
 
+	// Translate HTTP proxy environment variables, that are set by the environment trait,
+	// into corresponding JVM system properties.
+	if HTTPProxy := envvar.Get(container.Env, "HTTP_PROXY"); HTTPProxy != nil {
+		u, err := url.Parse(HTTPProxy.Value)
+		if err != nil {
+			return err
+		}
+		if !util.StringSliceContainsAnyOf(t.Options, "http.proxyHost") {
+			args = append(args, fmt.Sprintf("-Dhttp.proxyHost=%q", u.Hostname()))
+		}
+		if port := u.Port(); !util.StringSliceContainsAnyOf(t.Options, "http.proxyPort") && port != "" {
+			args = append(args, fmt.Sprintf("-Dhttp.proxyPort=%q", u.Port()))
+		}
+		if user := u.User; !util.StringSliceContainsAnyOf(t.Options, "http.proxyUser") && user != nil {
+			args = append(args, fmt.Sprintf("-Dhttp.proxyUser=%q", user.Username()))
+			if password, ok := user.Password(); !util.StringSliceContainsAnyOf(t.Options, "http.proxyUser") && ok {
+				args = append(args, fmt.Sprintf("-Dhttp.proxyPassword=%q", password))
+			}
+		}
+	}
+
+	if HTTPSProxy := envvar.Get(container.Env, "HTTPS_PROXY"); HTTPSProxy != nil {
+		u, err := url.Parse(HTTPSProxy.Value)
+		if err != nil {
+			return err
+		}
+		if !util.StringSliceContainsAnyOf(t.Options, "https.proxyHost") {
+			args = append(args, fmt.Sprintf("-Dhttps.proxyHost=%q", u.Hostname()))
+		}
+		if port := u.Port(); !util.StringSliceContainsAnyOf(t.Options, "https.proxyPort") && port != "" {
+			args = append(args, fmt.Sprintf("-Dhttps.proxyPort=%q", u.Port()))
+		}
+		if user := u.User; !util.StringSliceContainsAnyOf(t.Options, "https.proxyUser") && user != nil {
+			args = append(args, fmt.Sprintf("-Dhttps.proxyUser=%q", user.Username()))
+			if password, ok := user.Password(); !util.StringSliceContainsAnyOf(t.Options, "https.proxyUser") && ok {
+				args = append(args, fmt.Sprintf("-Dhttps.proxyPassword=%q", password))
+			}
+		}
+	}
+
+	if noProxy := envvar.Get(container.Env, "NO_PROXY"); noProxy != nil {
+		if !util.StringSliceContainsAnyOf(t.Options, "http.nonProxyHosts") {
+			// Convert to the format expected by the JVM http.nonProxyHosts system property
+			hosts := strings.Split(strings.ReplaceAll(noProxy.Value, " ", ""), ",")
+			for i, host := range hosts {
+				if strings.HasPrefix(host, ".") {
+					hosts[i] = strings.Replace(host, ".", "*.", 1)
+				}
+			}
+			args = append(args, fmt.Sprintf("-Dhttp.nonProxyHosts=%q", strings.Join(hosts, "|")))
+		}
+	}
+
 	// Tune JVM maximum heap size based on the container memory limit, if any.
 	// This is configured off-container, thus is limited to explicit user configuration.
 	// We may want to inject a wrapper script into the container image, so that it can
@@ -190,8 +246,8 @@ func (t *jvmTrait) Apply(e *Environment) error {
 	items := classpath.List()
 	// Keep class path sorted so that it's consistent over reconciliation cycles
 	sort.Strings(items)
-
 	args = append(args, "-cp", strings.Join(items, ":"))
+
 	args = append(args, e.CamelCatalog.Runtime.ApplicationClass)
 
 	if IsNilOrTrue(t.PrintCommand) {
@@ -209,7 +265,7 @@ func (t *jvmTrait) Apply(e *Environment) error {
 	return nil
 }
 
-// IsPlatformTrait overrides base class method
+// IsPlatformTrait overrides base class method.
 func (t *jvmTrait) IsPlatformTrait() bool {
 	return true
 }

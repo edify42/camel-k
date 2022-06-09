@@ -18,12 +18,14 @@ limitations under the License.
 package trait
 
 import (
+	"github.com/apache/camel-k/pkg/util/camel"
 	"github.com/apache/camel-k/pkg/util/reference"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
 
 	sb "github.com/redhat-developer/service-binding-operator/apis/binding/v1alpha1"
+	"github.com/redhat-developer/service-binding-operator/pkg/client/kubernetes"
 	"github.com/redhat-developer/service-binding-operator/pkg/reconcile/pipeline"
 	"github.com/redhat-developer/service-binding-operator/pkg/reconcile/pipeline/context"
 	"github.com/redhat-developer/service-binding-operator/pkg/reconcile/pipeline/handler/collect"
@@ -36,7 +38,7 @@ import (
 // The Service Binding trait allows users to connect to Services in Kubernetes:
 // https://github.com/k8s-service-bindings/spec#service-binding
 // As the specification is still evolving this is subject to change
-// +camel-k:trait=service-binding
+// +camel-k:trait=service-binding.
 type serviceBindingTrait struct {
 	BaseTrait `property:",squash"`
 	// List of Services in the form [[apigroup/]version:]kind:[namespace/]name
@@ -76,7 +78,7 @@ func (t *serviceBindingTrait) Apply(e *Environment) error {
 	if secret != nil {
 		e.Resources.Add(secret)
 		e.ApplicationProperties["quarkus.kubernetes-service-binding.enabled"] = "true"
-		e.ApplicationProperties["SERVICE_BINDING_ROOT"] = serviceBindingsMountPath
+		e.ApplicationProperties["SERVICE_BINDING_ROOT"] = camel.ServiceBindingsMountPath
 		e.ServiceBindingSecret = secret.GetName()
 	}
 	return nil
@@ -92,7 +94,7 @@ func (t *serviceBindingTrait) getContext(e *Environment) (pipeline.Context, erro
 	if err != nil {
 		return nil, err
 	}
-	ctxProvider := context.Provider(dyn, context.ResourceLookup(e.Client.RESTMapper()))
+	ctxProvider := context.Provider(dyn, e.Client.AuthorizationV1().SubjectAccessReviews(), kubernetes.ResourceLookup(e.Client.RESTMapper()))
 	ctx, err := ctxProvider.Get(serviceBinding)
 	if err != nil {
 		return nil, err

@@ -424,6 +424,8 @@ ProxyPreserveHost On
 			"--maven-repository", fmt.Sprintf(`https://%s/repository/maven-public/@id=central-internal@mirrorOf=central`, hostname),
 			"--maven-repository", fmt.Sprintf(`https://%s/repository/%s/%s`, hostname, stagingRepository.ID, strings.Join(getRepositoryAttributes(stagingRepository), "")),
 			"--maven-ca-secret", secret.Name+"/"+corev1.TLSCertKey,
+			// Active batch mode to assert dependencies download
+			"--maven-cli-option", "--batch-mode",
 		).Execute()).To(Succeed())
 
 		Eventually(PlatformPhase(ns), TestTimeoutMedium).Should(Equal(v1.IntegrationPlatformPhaseReady))
@@ -433,7 +435,7 @@ ProxyPreserveHost On
 		Expect(Kamel("run", "-n", ns, "files/Java.java", "--name", name).Execute()).To(Succeed())
 
 		Eventually(IntegrationPodPhase(ns, name), TestTimeoutMedium).Should(Equal(corev1.PodRunning))
-		Eventually(IntegrationCondition(ns, name, v1.IntegrationConditionReady), TestTimeoutShort).Should(Equal(corev1.ConditionTrue))
+		Eventually(IntegrationConditionStatus(ns, name, v1.IntegrationConditionReady), TestTimeoutShort).Should(Equal(corev1.ConditionTrue))
 		Eventually(IntegrationLogs(ns, name), TestTimeoutShort).Should(ContainSubstring("Magicstring!"))
 
 		// Assert no dependencies have been downloaded from the Maven central repository

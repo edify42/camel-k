@@ -30,7 +30,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	. "github.com/apache/camel-k/e2e/support"
-	"github.com/apache/camel-k/pkg/apis/camel/v1"
+	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
 	"github.com/apache/camel-k/pkg/util/openshift"
 )
 
@@ -56,7 +56,7 @@ func TestKitKnativeFullBuild(t *testing.T) {
 }
 
 func TestKitTimerToLogFullNativeBuild(t *testing.T) {
-	doKitFullBuild(t, "timer-to-log", "4Gi", "15m0s", 2*TestTimeoutLong, kitOptions{
+	doKitFullBuild(t, "timer-to-log", "4Gi", "15m0s", TestTimeoutVeryLong, kitOptions{
 		dependencies: []string{
 			"camel:timer", "camel:log",
 		},
@@ -67,6 +67,8 @@ func TestKitTimerToLogFullNativeBuild(t *testing.T) {
 }
 
 func doKitFullBuild(t *testing.T, name string, memoryLimit string, buildTimeout string, testTimeout time.Duration, options kitOptions) {
+	t.Helper()
+
 	WithNewTestNamespace(t, func(ns string) {
 		strategy := os.Getenv("KAMEL_INSTALL_BUILD_PUBLISH_STRATEGY")
 		ocp, err := openshift.IsOpenShift(TestClient())
@@ -90,7 +92,7 @@ func doKitFullBuild(t *testing.T, name string, memoryLimit string, buildTimeout 
 		}
 		Expect(Kamel(buildKitArgs...).Execute()).To(Succeed())
 
-		Eventually(Build(ns, name)).ShouldNot(BeNil())
+		Eventually(Build(ns, name), testTimeout).ShouldNot(BeNil())
 		Eventually(BuildPhase(ns, name), testTimeout).Should(Equal(v1.BuildPhaseSucceeded))
 		Eventually(KitPhase(ns, name), testTimeout).Should(Equal(v1.IntegrationKitPhaseReady))
 	})

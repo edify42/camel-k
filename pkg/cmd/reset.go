@@ -54,44 +54,44 @@ type resetCmdOptions struct {
 	SkipKameletBindings bool `mapstructure:"skip-kamelet-bindings"`
 }
 
-func (o *resetCmdOptions) reset(_ *cobra.Command, _ []string) {
+func (o *resetCmdOptions) reset(cmd *cobra.Command, _ []string) {
 	c, err := o.GetCmdClient()
 	if err != nil {
-		fmt.Print(err)
+		fmt.Fprint(cmd.ErrOrStderr(), err)
 		return
 	}
 
 	var n int
 	if !o.SkipKameletBindings {
 		if n, err = o.deleteAllKameletBindings(c); err != nil {
-			fmt.Print(err)
+			fmt.Fprint(cmd.ErrOrStderr(), err)
 			return
 		}
-		fmt.Printf("%d kamelet bindings deleted from namespace %s\n", n, o.Namespace)
+		fmt.Fprintln(cmd.OutOrStdout(), n, "kamelet bindings deleted from namespace", o.Namespace)
 	}
 
 	if !o.SkipIntegrations {
 		if n, err = o.deleteAllIntegrations(c); err != nil {
-			fmt.Print(err)
+			fmt.Fprint(cmd.ErrOrStderr(), err)
 			return
 		}
-		fmt.Printf("%d integrations deleted from namespace %s\n", n, o.Namespace)
+		fmt.Fprintln(cmd.OutOrStdout(), n, "integrations deleted from namespace", o.Namespace)
 	}
 
 	if !o.SkipKits {
 		if n, err = o.deleteAllIntegrationKits(c); err != nil {
-			fmt.Print(err)
+			fmt.Fprint(cmd.ErrOrStderr(), err)
 			return
 		}
-		fmt.Printf("%d integration kits deleted from namespace %s\n", n, o.Namespace)
+		fmt.Fprintln(cmd.OutOrStdout(), n, "integration kits deleted from namespace", o.Namespace)
 	}
 
 	if err = o.resetIntegrationPlatform(c); err != nil {
-		fmt.Println(err)
+		fmt.Fprintln(cmd.ErrOrStderr(), err)
 		return
 	}
 
-	fmt.Println("Camel K platform has been reset successfully!")
+	fmt.Fprintln(cmd.OutOrStdout(), "Camel K platform has been reset successfully!")
 }
 
 func (o *resetCmdOptions) deleteAllIntegrations(c client.Client) (int, error) {
@@ -146,7 +146,7 @@ func (o *resetCmdOptions) resetIntegrationPlatform(c client.Client) error {
 		return errors.Wrap(err, fmt.Sprintf("could not retrieve integration platform from namespace %s", o.Namespace))
 	}
 	if len(list.Items) > 1 {
-		return errors.New(fmt.Sprintf("expected 1 integration platform in the namespace, found: %d", len(list.Items)))
+		return fmt.Errorf("expected 1 integration platform in the namespace, found: %d", len(list.Items))
 	} else if len(list.Items) == 0 {
 		return errors.New("no integration platforms found in the namespace: run \"kamel install\" to install the platform")
 	}

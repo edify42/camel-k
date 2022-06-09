@@ -23,6 +23,8 @@ import (
 	"io"
 	"time"
 
+	"go.uber.org/multierr"
+
 	klog "github.com/apache/camel-k/pkg/util/log"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
@@ -39,7 +41,7 @@ var commonUserContainerNames = map[string]bool{
 	"user-container": true,
 }
 
-// PodScraper scrapes logs of a specific pod
+// PodScraper scrapes logs of a specific pod.
 type PodScraper struct {
 	namespace            string
 	podName              string
@@ -48,7 +50,7 @@ type PodScraper struct {
 	L                    klog.Logger
 }
 
-// NewPodScraper creates a new pod scraper
+// NewPodScraper creates a new pod scraper.
 func NewPodScraper(c kubernetes.Interface, namespace string, podName string, defaultContainerName string) *PodScraper {
 	return &PodScraper{
 		namespace:            namespace,
@@ -59,14 +61,15 @@ func NewPodScraper(c kubernetes.Interface, namespace string, podName string, def
 	}
 }
 
-// Start returns a reader that streams the pod logs
+// Start returns a reader that streams the pod logs.
 func (s *PodScraper) Start(ctx context.Context) *bufio.Reader {
 	pipeIn, pipeOut := io.Pipe()
 	bufPipeIn := bufio.NewReader(pipeIn)
 	bufPipeOut := bufio.NewWriter(pipeOut)
 	closeFun := func() error {
-		bufPipeOut.Flush()
-		return pipeOut.Close()
+		return multierr.Append(
+			bufPipeOut.Flush(),
+			pipeOut.Close())
 	}
 	go s.doScrape(ctx, bufPipeOut, closeFun)
 	return bufPipeIn
@@ -101,7 +104,11 @@ func (s *PodScraper) doScrape(ctx context.Context, out *bufio.Writer, clientClos
 		if err != nil {
 			break
 		}
-		out.Flush()
+
+		err = out.Flush()
+		if err != nil {
+			break
+		}
 	}
 
 	s.handleAndRestart(ctx, err, 5*time.Second, out, clientCloser)
@@ -135,7 +142,7 @@ func (s *PodScraper) handleAndRestart(ctx context.Context, err error, wait time.
 }
 
 // waitForPodRunning waits for a given pod to reach the running state.
-// It may return the internal container to watch if present
+// It may return the internal container to watch if present.
 func (s *PodScraper) waitForPodRunning(ctx context.Context, namespace string, podName string, defaultContainerName string) (string, error) {
 	pod := corev1.Pod{
 		TypeMeta: metav1.TypeMeta{

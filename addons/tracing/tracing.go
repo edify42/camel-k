@@ -31,7 +31,7 @@ import (
 //
 // The Tracing trait is disabled by default.
 //
-// +camel-k:trait=tracing
+// +camel-k:trait=tracing.
 type tracingTrait struct {
 	trait.BaseTrait `property:",squash"`
 	// Enables automatic configuration of the trait, including automatic discovery of the tracing endpoint.
@@ -68,7 +68,7 @@ var (
 	defaultSamplerParam = "1"
 )
 
-// NewTracingTrait --
+// NewTracingTrait --.
 func NewTracingTrait() trait.Trait {
 	return &tracingTrait{
 		BaseTrait: trait.NewBaseTrait("tracing", trait.TraitOrderBeforeControllerCreation),
@@ -112,7 +112,6 @@ func (t *tracingTrait) Configure(e *trait.Environment) (bool, error) {
 }
 
 func (t *tracingTrait) Apply(e *trait.Environment) error {
-
 	util.StringSliceUniqueAdd(&e.Integration.Status.Capabilities, v1.CapabilityTracing)
 
 	if e.CamelCatalog != nil {

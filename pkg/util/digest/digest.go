@@ -18,14 +18,14 @@ limitations under the License.
 package digest
 
 import (
-	// nolint: gosec
+	// this is needed to generate an SHA1 sum for Jars
+	// #nosec G505
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"path"
 	"sort"
 	"strconv"
@@ -38,7 +38,7 @@ import (
 )
 
 // ComputeForIntegration a digest of the fields that are relevant for the deployment
-// Produces a digest that can be used as docker image tag
+// Produces a digest that can be used as docker image tag.
 func ComputeForIntegration(integration *v1.Integration) (string, error) {
 	hash := sha256.New()
 	// Integration version is relevant
@@ -135,7 +135,7 @@ func ComputeForIntegration(integration *v1.Integration) (string, error) {
 }
 
 // ComputeForIntegrationKit a digest of the fields that are relevant for the deployment
-// Produces a digest that can be used as docker image tag
+// Produces a digest that can be used as docker image tag.
 func ComputeForIntegrationKit(kit *v1.IntegrationKit) (string, error) {
 	hash := sha256.New()
 	// Kit version is relevant
@@ -159,8 +159,8 @@ func ComputeForIntegrationKit(kit *v1.IntegrationKit) (string, error) {
 	return digest, nil
 }
 
-// ComputeForResource returns a digest for the specific resource
-func ComputeForResource(res v1.ResourceSpec) (string, error) {
+// ComputeForResource returns a digest for the specific resource.
+func ComputeForResource(res v1.DataSpec) (string, error) {
 	hash := sha256.New()
 	// Operator version is relevant
 	if _, err := hash.Write([]byte(defaults.Version)); err != nil {
@@ -173,16 +173,10 @@ func ComputeForResource(res v1.ResourceSpec) (string, error) {
 	if _, err := hash.Write([]byte(res.Name)); err != nil {
 		return "", err
 	}
-	if _, err := hash.Write([]byte(res.Type)); err != nil {
-		return "", err
-	}
 	if _, err := hash.Write([]byte(res.ContentKey)); err != nil {
 		return "", err
 	}
 	if _, err := hash.Write([]byte(res.ContentRef)); err != nil {
-		return "", err
-	}
-	if _, err := hash.Write([]byte(res.MountPath)); err != nil {
 		return "", err
 	}
 	if _, err := hash.Write([]byte(strconv.FormatBool(res.Compression))); err != nil {
@@ -194,7 +188,7 @@ func ComputeForResource(res v1.ResourceSpec) (string, error) {
 	return digest, nil
 }
 
-// ComputeForSource returns a digest for the specific source
+// ComputeForSource returns a digest for the specific source.
 func ComputeForSource(s v1.SourceSpec) (string, error) {
 	hash := sha256.New()
 	// Operator version is relevant
@@ -263,17 +257,19 @@ func sortedTraitAnnotationsKeys(it *v1.Integration) []string {
 func ComputeSHA1(elem ...string) (string, error) {
 	file := path.Join(elem...)
 
-	f, err := os.Open(file)
+	// #nosec G401
+	h := sha1.New()
+
+	err := util.WithFileReader(file, func(file io.Reader) error {
+		if _, err := io.Copy(h, file); err != nil {
+			return err
+		}
+
+		return nil
+	})
+
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
-
-	// nolint: gosec
-	h := sha1.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-
 	return base64.StdEncoding.EncodeToString(h.Sum(nil)), nil
 }

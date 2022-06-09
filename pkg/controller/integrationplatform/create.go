@@ -28,7 +28,7 @@ import (
 	"github.com/apache/camel-k/pkg/install"
 )
 
-// NewCreateAction returns a action that creates resources needed by the platform
+// NewCreateAction returns a action that creates resources needed by the platform.
 func NewCreateAction() Action {
 	return &createAction{}
 }
@@ -46,7 +46,12 @@ func (action *createAction) CanHandle(platform *v1.IntegrationPlatform) bool {
 }
 
 func (action *createAction) Handle(ctx context.Context, platform *v1.IntegrationPlatform) (*v1.IntegrationPlatform, error) {
-	for _, k := range resources.ResourcesWithPrefix("/camel-catalog-") {
+	paths, err := resources.WithPrefix("/camel-catalog-")
+	if err != nil {
+		return nil, err
+	}
+
+	for _, k := range paths {
 		action.L.Infof("Installing camel catalog: %s", k)
 		err := install.Resources(ctx, action.client, platform.Namespace, true, install.IdentityResourceCustomizer, k)
 		if err != nil {

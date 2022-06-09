@@ -83,9 +83,7 @@ func assembleIntegrationRunCommand(ctx context.Context, properties []string, dep
 		if err != nil {
 			return nil, err
 		}
-		for _, envVar := range setEnvVars {
-			cmd.Env = append(cmd.Env, envVar)
-		}
+		cmd.Env = append(cmd.Env, setEnvVars...)
 	} else {
 		// If we are running in containerized or just building an image, we should
 		// not evaluate the variables at this point since we are only generating the
@@ -102,7 +100,7 @@ func assembleIntegrationRunCommand(ctx context.Context, properties []string, dep
 	return cmd, nil
 }
 
-// RunLocalIntegrationRunCommand --
+// RunLocalIntegrationRunCommand --.
 func RunLocalIntegrationRunCommand(ctx context.Context, properties []string, dependencies []string, routes []string, propertiesDir string, stdout, stderr io.Writer) error {
 	cmd, err := assembleIntegrationRunCommand(ctx, properties, dependencies, routes, propertiesDir, stdout, stderr, true)
 	if err != nil {
@@ -110,7 +108,7 @@ func RunLocalIntegrationRunCommand(ctx context.Context, properties []string, dep
 	}
 
 	// Output command we are about to run.
-	fmt.Printf("Executing: %s", strings.Join(cmd.Args, " "))
+	fmt.Fprintln(cmd.Stdout, "Executing:", strings.Join(cmd.Args, " "))
 
 	// Run integration locally.
 	err = cmd.Run()
@@ -121,7 +119,7 @@ func RunLocalIntegrationRunCommand(ctx context.Context, properties []string, dep
 	return nil
 }
 
-// GetContainerIntegrationRunCommand --
+// GetContainerIntegrationRunCommand --.
 func GetContainerIntegrationRunCommand(ctx context.Context, properties []string, dependencies []string, routes []string, stdout, stderr io.Writer) (*exec.Cmd, error) {
 	// This is the integration command which will be run inside the container. Therefore all paths need to
 	// be valid container paths.

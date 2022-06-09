@@ -27,6 +27,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/scylladb/go-set/strset"
+	"github.com/spf13/cobra"
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
 	"github.com/apache/camel-k/pkg/builder"
@@ -46,19 +47,18 @@ where <type> is one of {` + strings.Join(acceptedDependencyTypes, "|") + `}.`
 func getDependencies(ctx context.Context, args []string, additionalDependencies []string, repositories []string, allDependencies bool) ([]string, error) {
 	// Fetch existing catalog or create new one if one does not already exist
 	catalog, err := createCamelCatalog(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	// Get top-level dependencies
-	dependencies, err := getTopLevelDependencies(catalog, args)
+	dependencies, err := getTopLevelDependencies(ctx, catalog, args)
 	if err != nil {
 		return nil, err
 	}
 
 	// Add additional user-provided dependencies
-	if additionalDependencies != nil {
-		for _, additionalDependency := range additionalDependencies {
-			dependencies = append(dependencies, additionalDependency)
-		}
-	}
+	dependencies = append(dependencies, additionalDependencies...)
 
 	// Compute transitive dependencies
 	if allDependencies {
@@ -76,13 +76,13 @@ func getDependencies(ctx context.Context, args []string, additionalDependencies 
 	return dependencies, nil
 }
 
-func getTopLevelDependencies(catalog *camel.RuntimeCatalog, args []string) ([]string, error) {
+func getTopLevelDependencies(ctx context.Context, catalog *camel.RuntimeCatalog, args []string) ([]string, error) {
 	// List of top-level dependencies
 	dependencies := strset.New()
 
 	// Invoke the dependency inspector code for each source file
 	for _, source := range args {
-		data, _, _, err := loadTextContent(source, false)
+		data, _, _, err := loadTextContent(ctx, source, false)
 		if err != nil {
 			return []string{}, err
 		}
@@ -118,30 +118,15 @@ func getTransitiveDependencies(ctx context.Context, catalog *camel.RuntimeCatalo
 	mc.LocalRepository = ""
 
 	if len(repositories) > 0 {
-		var repoList []v1.Repository
-		var mirrors []maven.Mirror
-		for i, repo := range repositories {
-			if strings.Contains(repo, "@mirrorOf=") {
-				mirror := maven.NewMirror(repo)
-				if mirror.ID == "" {
-					mirror.ID = fmt.Sprintf("mirror-%03d", i)
-				}
-				mirrors = append(mirrors, mirror)
-			} else {
-				repository := maven.NewRepository(repo)
-				if repository.ID == "" {
-					repository.ID = fmt.Sprintf("repository-%03d", i)
-				}
-				repoList = append(repoList, repository)
-			}
+		settings, err := maven.NewSettings(maven.DefaultRepositories, maven.Repositories(repositories...))
+		if err != nil {
+			return nil, err
 		}
-
-		settings := maven.NewDefaultSettings(repoList, mirrors)
 		settingsData, err := util.EncodeXML(settings)
 		if err != nil {
 			return nil, err
 		}
-		mc.SettingsContent = settingsData
+		mc.UserSettings = settingsData
 	}
 
 	// Make maven command less verbose
@@ -159,7 +144,7 @@ func getTransitiveDependencies(ctx context.Context, catalog *camel.RuntimeCatalo
 	}
 
 	// Dump dependencies in the dependencies directory and construct the list of dependencies
-	var transitiveDependencies []string
+	transitiveDependencies := []string{}
 	for _, entry := range artifacts {
 		transitiveDependencies = append(transitiveDependencies, entry.Location)
 	}
@@ -211,7 +196,6 @@ func getLocalBuildRoutes(integrationDirectory string) ([]string, error) {
 
 func generateCatalog(ctx context.Context) (*camel.RuntimeCatalog, error) {
 	// A Camel catalog is required for this operation
-	settings := ""
 	mvn := v1.MavenSpec{
 		LocalRepository: "",
 	}
@@ -220,8 +204,8 @@ func generateCatalog(ctx context.Context) (*camel.RuntimeCatalog, error) {
 		Provider: v1.RuntimeProviderQuarkus,
 	}
 	var providerDependencies []maven.Dependency
-	var caCert []byte
-	catalog, err := camel.GenerateCatalogCommon(ctx, settings, caCert, mvn, runtime, providerDependencies)
+	var caCert [][]byte
+	catalog, err := camel.GenerateCatalogCommon(ctx, nil, nil, caCert, mvn, runtime, providerDependencies)
 	if err != nil {
 		return nil, err
 	}
@@ -247,37 +231,37 @@ func createCamelCatalog(ctx context.Context) (*camel.RuntimeCatalog, error) {
 	return catalog, nil
 }
 
-func outputDependencies(dependencies []string, format string) error {
+func outputDependencies(dependencies []string, format string, cmd *cobra.Command) error {
 	if format != "" {
-		err := printDependencies(format, dependencies)
+		err := printDependencies(format, dependencies, cmd)
 		if err != nil {
 			return err
 		}
 	} else {
 		// Print output in text form
-		fmt.Println("dependencies:")
+		fmt.Fprintln(cmd.OutOrStdout(), "dependencies:")
 		for _, dep := range dependencies {
-			fmt.Printf("%v\n", dep)
+			fmt.Fprintln(cmd.OutOrStdout(), dep)
 		}
 	}
 
 	return nil
 }
 
-func printDependencies(format string, dependencies []string) error {
+func printDependencies(format string, dependencies []string, cmd *cobra.Command) error {
 	switch format {
 	case "yaml":
 		data, err := util.DependenciesToYAML(dependencies)
 		if err != nil {
 			return err
 		}
-		fmt.Print(string(data))
+		fmt.Fprint(cmd.OutOrStdout(), string(data))
 	case "json":
 		data, err := util.DependenciesToJSON(dependencies)
 		if err != nil {
 			return err
 		}
-		fmt.Print(string(data))
+		fmt.Fprint(cmd.OutOrStdout(), string(data))
 	default:
 		return errors.New("unknown output format: " + format)
 	}
@@ -286,7 +270,6 @@ func printDependencies(format string, dependencies []string) error {
 
 func validateFile(file string) error {
 	fileExists, err := util.FileExists(file)
-
 	if err != nil {
 		return err
 	}
@@ -312,12 +295,10 @@ func validateFiles(args []string) error {
 
 func validateAdditionalDependencies(additionalDependencies []string) error {
 	// Validate list of additional dependencies i.e. make sure that each dependency has a valid type
-	if additionalDependencies != nil {
-		for _, additionalDependency := range additionalDependencies {
-			isValid := validateDependency(additionalDependency)
-			if !isValid {
-				return errors.New("Unexpected type for user-provided dependency: " + additionalDependency + ". " + additionalDependencyUsageMessage)
-			}
+	for _, additionalDependency := range additionalDependencies {
+		isValid := validateDependency(additionalDependency)
+		if !isValid {
+			return errors.New("Unexpected type for user-provided dependency: " + additionalDependency + ". " + additionalDependencyUsageMessage)
 		}
 	}
 
@@ -344,8 +325,7 @@ func validateIntegrationFiles(args []string) error {
 	}
 
 	// Validate integration files.
-	err := validateFiles(args)
-	if err != nil {
+	if err := validateFiles(args); err != nil {
 		return err
 	}
 
@@ -385,7 +365,7 @@ func updateIntegrationProperties(properties []string, propertyFiles []string, ha
 	}
 
 	// Relocate properties files to this integration's property directory.
-	var relocatedPropertyFiles []string
+	relocatedPropertyFiles := []string{}
 	for _, propertyFile := range propertyFiles {
 		relocatedPropertyFile := path.Join(util.GetLocalPropertiesDir(), path.Base(propertyFile))
 		_, err = util.CopyFile(propertyFile, relocatedPropertyFile)
@@ -399,7 +379,7 @@ func updateIntegrationProperties(properties []string, propertyFiles []string, ha
 		// Output list of properties to property file if any CLI properties were given.
 		if len(properties) > 0 {
 			propertyFilePath := path.Join(util.GetLocalPropertiesDir(), "CLI.properties")
-			err = ioutil.WriteFile(propertyFilePath, []byte(strings.Join(properties, "\n")), 0777)
+			err = ioutil.WriteFile(propertyFilePath, []byte(strings.Join(properties, "\n")), 0o600)
 			if err != nil {
 				return nil, err
 			}
@@ -458,7 +438,8 @@ func updateQuarkusDirectory() error {
 		return err
 	}
 
-	util.CopyQuarkusAppFiles(util.CustomQuarkusDirectoryName, util.GetLocalQuarkusDir())
+	// ignore error if custom dir doesn't exist
+	_ = util.CopyQuarkusAppFiles(util.CustomQuarkusDirectoryName, util.GetLocalQuarkusDir())
 
 	return nil
 }
@@ -469,7 +450,8 @@ func updateAppDirectory() error {
 		return err
 	}
 
-	util.CopyAppFile(util.CustomAppDirectoryName, util.GetLocalAppDir())
+	// ignore error if custom dir doesn't exist
+	_ = util.CopyAppFile(util.CustomAppDirectoryName, util.GetLocalAppDir())
 
 	return nil
 }
@@ -480,7 +462,8 @@ func updateLibDirectory() error {
 		return err
 	}
 
-	util.CopyLibFiles(util.CustomLibDirectoryName, util.GetLocalLibDir())
+	// ignore error if custom dir doesn't exist
+	_ = util.CopyLibFiles(util.CustomLibDirectoryName, util.GetLocalLibDir())
 
 	return nil
 }
@@ -500,9 +483,7 @@ func createMavenWorkingDirectory() error {
 
 func deleteMavenWorkingDirectory() error {
 	// Remove directory used for computing the dependencies
-	defer os.RemoveAll(util.MavenWorkingDirectory)
-
-	return nil
+	return os.RemoveAll(util.MavenWorkingDirectory)
 }
 
 func getCustomDependenciesDir(integrationDirectory string) string {
@@ -517,54 +498,33 @@ func getCustomRoutesDir(integrationDirectory string) string {
 	return path.Join(integrationDirectory, "routes")
 }
 
-func getCustomQuarkusDir() (string, error) {
-	currentDir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	return path.Join(currentDir, "quarkus"), nil
+func getCustomQuarkusDir(integrationDirectory string) string {
+	parentDir := path.Dir(strings.TrimSuffix(integrationDirectory, "/"))
+	return path.Join(parentDir, "quarkus")
 }
 
-func getCustomLibDir() (string, error) {
-	currentDir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	return path.Join(currentDir, "lib/main"), nil
+func getCustomLibDir(integrationDirectory string) string {
+	parentDir := path.Dir(strings.TrimSuffix(integrationDirectory, "/"))
+	return path.Join(parentDir, "lib/main")
 }
 
-func getCustomAppDir() (string, error) {
-	currentDir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	return path.Join(currentDir, "app"), nil
+func getCustomAppDir(integrationDirectory string) string {
+	parentDir := path.Dir(strings.TrimSuffix(integrationDirectory, "/"))
+	return path.Join(parentDir, "app")
 }
 
-func deleteLocalIntegrationDirs() error {
-	directory, err := getCustomQuarkusDir()
-	if err != nil {
-		return err
+func deleteLocalIntegrationDirs(integrationDirectory string) error {
+	dirs := []string{
+		getCustomQuarkusDir(integrationDirectory),
+		getCustomLibDir(integrationDirectory),
+		getCustomAppDir(integrationDirectory),
 	}
 
-	err = os.RemoveAll(directory)
-	if err != nil {
-		return err
-	}
-
-	err = os.RemoveAll("lib")
-	if err != nil {
-		return err
-	}
-
-	directory, err = getCustomAppDir()
-	if err != nil {
-		return err
-	}
-
-	err = os.RemoveAll(directory)
-	if err != nil {
-		return err
+	for _, dir := range dirs {
+		err := os.RemoveAll(dir)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

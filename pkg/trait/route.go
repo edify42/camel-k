@@ -43,6 +43,7 @@ import (
 // See the examples section at the end of this page to see the setup options.
 //
 // +camel-k:trait=route
+// nolint: tagliatelle
 type routeTrait struct {
 	BaseTrait `property:",squash"`
 	// To configure the host exposed by the route.
@@ -101,7 +102,7 @@ func newRouteTrait() Trait {
 	}
 }
 
-// IsAllowedInProfile overrides default
+// IsAllowedInProfile overrides default.
 func (t *routeTrait) IsAllowedInProfile(profile v1.TraitProfile) bool {
 	return profile == v1.TraitProfileOpenShift
 }

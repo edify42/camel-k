@@ -28,6 +28,8 @@ import (
 )
 
 func NewtestYAMLInspector(t *testing.T) YAMLInspector {
+	t.Helper()
+
 	catalog, err := camel.DefaultCatalog()
 	assert.Nil(t, err)
 
@@ -81,6 +83,26 @@ const YAMLInDepthChannel = `
                 uri: knative:endpoint/service
 `
 
+const YAMLWireTapKnativeEIP = `
+- from:
+    uri: knative:channel/mychannel
+    parameters:
+      period: "1000"
+    steps:
+      - wireTap:
+          uri: knative:channel/mychannel
+`
+
+const YAMLWireTapJmsEIP = `
+- from:
+    uri: knative:channel/mychannel
+    parameters:
+      period: "1000"
+    steps:
+      - wireTap:
+          uri: jms:queue:foo
+`
+
 func TestYAMLDependencies(t *testing.T) {
 	tests := []struct {
 		name                string
@@ -123,8 +145,25 @@ func TestYAMLDependencies(t *testing.T) {
 				`mvn:org.apache.camel.k:camel-k-knative-consumer`,
 			},
 		},
+		{
+			name:   "wire-tap-knative",
+			source: YAMLWireTapKnativeEIP,
+			dependencies: []string{
+				`mvn:org.apache.camel.k:camel-k-knative-producer`,
+				`mvn:org.apache.camel.k:camel-k-knative-consumer`,
+			},
+		},
+		{
+			name:   "wire-tap-jms",
+			source: YAMLWireTapJmsEIP,
+			dependencies: []string{
+				`mvn:org.apache.camel.k:camel-k-knative-consumer`,
+				`camel:jms`,
+			},
+		},
 	}
-	for _, test := range tests {
+	for i := range tests {
+		test := tests[i]
 		t.Run(test.name, func(t *testing.T) {
 			code := v1.SourceSpec{
 				DataSpec: v1.DataSpec{
@@ -327,7 +366,8 @@ func TestYAMLJson(t *testing.T) {
 		},
 	}
 
-	for i, test := range tc {
+	for i := range tc {
+		test := tc[i]
 		t.Run(fmt.Sprintf("%s-%d", test.dependency, i), func(t *testing.T) {
 			code := v1.SourceSpec{
 				DataSpec: v1.DataSpec{
@@ -348,7 +388,7 @@ func TestYAMLJson(t *testing.T) {
 	}
 }
 
-const YAMLKameletEipNoId = `
+const YAMLKameletEipNoID = `
 - from:
     uri: timer:tick
     steps:
@@ -361,6 +401,7 @@ const YAMLKameletEipInline = `
     steps:
     - kamelet: "foo/bar?baz=test"
 `
+
 const YAMLKameletEipMap = `
 - from:
     uri: timer:tick
@@ -368,6 +409,8 @@ const YAMLKameletEipMap = `
     - kamelet: 
         name: "foo/bar?baz=test"
 `
+
+// #nosec G101
 const YAMLKameletEipMapWithParams = `
 - from:
     uri: timer:tick
@@ -377,6 +420,7 @@ const YAMLKameletEipMapWithParams = `
         parameters:
           baz:test
 `
+
 const YAMLKameletEndpoint = `
 - from:
     uri: timer:tick
@@ -390,7 +434,7 @@ func TestYAMLKamelet(t *testing.T) {
 		kamelets []string
 	}{
 		{
-			source:   YAMLKameletEipNoId,
+			source:   YAMLKameletEipNoID,
 			kamelets: []string{"foo"},
 		},
 		{
@@ -411,7 +455,8 @@ func TestYAMLKamelet(t *testing.T) {
 		},
 	}
 
-	for i, test := range tc {
+	for i := range tc {
+		test := tc[i]
 		t.Run(fmt.Sprintf("TestYAMLKamelet-%d", i), func(t *testing.T) {
 			code := v1.SourceSpec{
 				DataSpec: v1.DataSpec{
@@ -478,7 +523,8 @@ func TestYAMLExplicitParameters(t *testing.T) {
 		},
 	}
 
-	for i, test := range tc {
+	for i := range tc {
+		test := tc[i]
 		t.Run(fmt.Sprintf("TestYAMLExplicitParameters-%d", i), func(t *testing.T) {
 			code := v1.SourceSpec{
 				DataSpec: v1.DataSpec{

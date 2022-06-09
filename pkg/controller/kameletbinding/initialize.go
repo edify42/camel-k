@@ -32,7 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// NewInitializeAction returns a action that initializes the kamelet binding configuration when not provided by the user
+// NewInitializeAction returns a action that initializes the kamelet binding configuration when not provided by the user.
 func NewInitializeAction() Action {
 	return &initializeAction{}
 }
@@ -50,7 +50,7 @@ func (action *initializeAction) CanHandle(kameletbinding *v1alpha1.KameletBindin
 }
 
 func (action *initializeAction) Handle(ctx context.Context, kameletbinding *v1alpha1.KameletBinding) (*v1alpha1.KameletBinding, error) {
-	it, err := createIntegrationFor(ctx, action.client, kameletbinding)
+	it, err := CreateIntegrationFor(ctx, action.client, kameletbinding)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +85,7 @@ func (action *initializeAction) propagateIcon(ctx context.Context, binding *v1al
 	if _, ok := clone.Annotations[v1alpha1.AnnotationIcon]; !ok {
 		clone.Annotations[v1alpha1.AnnotationIcon] = icon
 	}
-	p, err := patch.PositiveMergePatch(binding, clone)
+	p, err := patch.MergePatch(binding, clone)
 	if err != nil {
 		action.L.Errorf(err, "cannot compute patch to update icon for kamelet binding %q", binding.Name)
 		return

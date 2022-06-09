@@ -36,7 +36,7 @@ import (
 	"github.com/apache/camel-k/pkg/util/kubernetes"
 )
 
-// NewBuildAction creates a new build request handling action for the kit
+// NewBuildAction creates a new build request handling action for the kit.
 func NewBuildAction() Action {
 	return &buildAction{}
 }
@@ -87,7 +87,7 @@ func (action *buildAction) handleBuildSubmitted(ctx context.Context, kit *v1.Int
 		labels := kubernetes.FilterCamelCreatorLabels(kit.Labels)
 		labels[v1.IntegrationKitLayoutLabel] = kit.Labels[v1.IntegrationKitLayoutLabel]
 
-		var annotations = make(map[string]string)
+		annotations := make(map[string]string)
 		if v, ok := kit.Annotations[v1.PlatformSelectorAnnotation]; ok {
 			annotations[v1.PlatformSelectorAnnotation] = v
 		}

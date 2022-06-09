@@ -23,15 +23,15 @@ spec:
   types:
     out:
       mediaType: text/plain
-  flow:
+  template:
     from:
       uri: timer:tick
       parameters:
         period: {{`"{{period}}"`}}
       steps:
-        - set-body:
+        - setBody:
             constant: {{`"{{message}}"`}}
-        - set-header:
+        - setHeader:
             name: "Content-Type"
             constant: "text/plain"
         - to: "kamelet:sink"

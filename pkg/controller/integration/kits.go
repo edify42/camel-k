@@ -33,6 +33,7 @@ import (
 	"github.com/apache/camel-k/pkg/trait"
 	"github.com/apache/camel-k/pkg/util"
 	"github.com/apache/camel-k/pkg/util/defaults"
+	"github.com/apache/camel-k/pkg/util/log"
 )
 
 func lookupKitsForIntegration(ctx context.Context, c ctrl.Reader, integration *v1.Integration, options ...ctrl.ListOption) ([]v1.IntegrationKit, error) {
@@ -67,34 +68,43 @@ func lookupKitsForIntegration(ctx context.Context, c ctrl.Reader, integration *v
 	}
 
 	kits := make([]v1.IntegrationKit, 0)
-	for _, kit := range list.Items {
-		match, err := integrationMatches(integration, &kit)
+	for i := range list.Items {
+		kit := &list.Items[i]
+		match, err := integrationMatches(integration, kit)
 		if err != nil {
 			return nil, err
 		} else if !match {
 			continue
 		}
-		kits = append(kits, kit)
+		kits = append(kits, *kit)
 	}
 
 	return kits, nil
 }
 
-// integrationMatches returns whether the v1.IntegrationKit meets the requirements of the v1.Integration
+// integrationMatches returns whether the v1.IntegrationKit meets the requirements of the v1.Integration.
 func integrationMatches(integration *v1.Integration, kit *v1.IntegrationKit) (bool, error) {
+	ilog := log.ForIntegration(integration)
+
+	ilog.Debug("Matching integration", "integration", integration.Name, "integration-kit", kit.Name, "namespace", integration.Namespace)
 	if kit.Status.Phase == v1.IntegrationKitPhaseError {
+		ilog.Debug("Integration kit has a phase of Error", "integration-kit", kit.Name, "namespace", integration.Namespace)
 		return false, nil
 	}
 	if kit.Status.Version != integration.Status.Version {
+		ilog.Debug("Integration and integration-kit versions do not match", "integration", integration.Name, "integration-kit", kit.Name, "namespace", integration.Namespace)
 		return false, nil
 	}
 	if kit.Status.RuntimeProvider != integration.Status.RuntimeProvider {
+		ilog.Debug("Integration and integration-kit runtime providers do not match", "integration", integration.Name, "integration-kit", kit.Name, "namespace", integration.Namespace)
 		return false, nil
 	}
 	if kit.Status.RuntimeVersion != integration.Status.RuntimeVersion {
+		ilog.Debug("Integration and integration-kit runtime versions do not match", "integration", integration.Name, "integration-kit", kit.Name, "namespace", integration.Namespace)
 		return false, nil
 	}
 	if len(integration.Status.Dependencies) != len(kit.Spec.Dependencies) {
+		ilog.Debug("Integration and integration-kit have different number of dependencies", "integration", integration.Name, "integration-kit", kit.Name, "namespace", integration.Namespace)
 		return false, nil
 	}
 	// When a platform kit is created it inherits the traits from the integrations and as
@@ -108,15 +118,19 @@ func integrationMatches(integration *v1.Integration, kit *v1.IntegrationKit) (bo
 	// A kit can be used only if it contains a subset of the traits and related configurations
 	// declared on integration.
 	if match, err := hasMatchingTraits(integration.Spec.Traits, kit.Spec.Traits); !match || err != nil {
+		ilog.Debug("Integration and integration-kit traits do not match", "integration", integration.Name, "integration-kit", kit.Name, "namespace", integration.Namespace)
 		return false, err
 	}
 	if !util.StringSliceContains(kit.Spec.Dependencies, integration.Status.Dependencies) {
+		ilog.Debug("Integration and integration-kit dependencies do not match", "integration", integration.Name, "integration-kit", kit.Name, "namespace", integration.Namespace)
 		return false, nil
 	}
+
+	ilog.Debug("Matched Integration and integration-kit", "integration", integration.Name, "integration-kit", kit.Name, "namespace", integration.Namespace)
 	return true, nil
 }
 
-// kitMatches returns whether the two v1.IntegrationKit match
+// kitMatches returns whether the two v1.IntegrationKit match.
 func kitMatches(kit1 *v1.IntegrationKit, kit2 *v1.IntegrationKit) (bool, error) {
 	version := kit1.Status.Version
 	if version == "" {
@@ -234,7 +248,7 @@ func hasMatchingTrait(ts1 *v1.TraitSpec, ts2 *v1.TraitSpec) (bool, error) {
 	return true, nil
 }
 
-// We need to try to perform a slice equality in order to prevent a runtime panic
+// We need to try to perform a slice equality in order to prevent a runtime panic.
 func equal(a, b interface{}) bool {
 	aSlice, aOk := a.([]interface{})
 	bSlice, bOk := b.([]interface{})

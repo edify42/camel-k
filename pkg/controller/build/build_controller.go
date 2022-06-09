@@ -72,8 +72,14 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		For(&v1.Build{}, builder.WithPredicates(
 			platform.FilteringFuncs{
 				UpdateFunc: func(e event.UpdateEvent) bool {
-					oldBuild := e.ObjectOld.(*v1.Build)
-					newBuild := e.ObjectNew.(*v1.Build)
+					oldBuild, ok := e.ObjectOld.(*v1.Build)
+					if !ok {
+						return false
+					}
+					newBuild, ok := e.ObjectNew.(*v1.Build)
+					if !ok {
+						return false
+					}
 					// Ignore updates to the build status in which case metadata.Generation does not change,
 					// or except when the build phase changes as it's used to transition from one phase
 					// to another
@@ -86,7 +92,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 var _ reconcile.Reconciler = &reconcileBuild{}
 
-// reconcileBuild reconciles a Build object
+// reconcileBuild reconciles a Build object.
 type reconcileBuild struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the API server
@@ -193,6 +199,7 @@ func (r *reconcileBuild) Reconcile(ctx context.Context, request reconcile.Reques
 			// handle one action at time so the resource
 			// is always at its latest state
 			camelevent.NotifyBuildUpdated(ctx, r.client, r.recorder, &instance, newTarget)
+
 			break
 		}
 	}
@@ -212,6 +219,7 @@ func (r *reconcileBuild) Reconcile(ctx context.Context, request reconcile.Reques
 }
 
 func (r *reconcileBuild) update(ctx context.Context, base *v1.Build, target *v1.Build) (reconcile.Result, error) {
+	target.Status.ObservedGeneration = base.Generation
 	err := r.client.Status().Patch(ctx, target, ctrl.MergeFrom(base))
 
 	return reconcile.Result{}, err

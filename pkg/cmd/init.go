@@ -24,8 +24,10 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/apache/camel-k/pkg/resources"
+	"github.com/apache/camel-k/pkg/util"
+
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	"github.com/apache/camel-k/pkg/resources"
 	"github.com/spf13/cobra"
 )
 
@@ -90,7 +92,11 @@ func (o *initCmdOptions) writeFromTemplate(language v1.Language, fileName string
 	params := TemplateParameters{
 		Name: simpleName,
 	}
-	rawData := resources.ResourceAsString(fmt.Sprintf("/templates/%s.tmpl", language))
+
+	rawData, err := resources.ResourceAsString(fmt.Sprintf("/templates/%s.tmpl", language))
+	if err != nil {
+		return err
+	}
 	if rawData == "" {
 		return fmt.Errorf("cannot find template for language %s", string(language))
 	}
@@ -98,13 +104,10 @@ func (o *initCmdOptions) writeFromTemplate(language v1.Language, fileName string
 	if err != nil {
 		return err
 	}
-	out, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0777)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
 
-	return tmpl.Execute(out, params)
+	return util.WithFile(fileName, os.O_RDWR|os.O_CREATE, 0o644, func(file *os.File) error {
+		return tmpl.Execute(file, params)
+	})
 }
 
 func (o *initCmdOptions) extractLanguage(fileName string) *v1.Language {
