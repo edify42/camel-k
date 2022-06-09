@@ -1,4 +1,4 @@
-module github.com/lendi-au/camel-k
+module github.com/lendi-au/camel-k/v2
 
 go 1.16
 
